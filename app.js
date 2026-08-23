@@ -585,7 +585,7 @@ function renderIntro() {
       <p class="lede">Responda algumas perguntas rápidas e receba uma orientação de encaminhamento: SAMU, Polícia, UBS, UPA ou Hospital.</p>
       <p class="question" style="margin-top:22px">É uma emergência — ou seja, você ou alguém sofre risco imediato (ou nos próximos minutos) de morte?</p>
       <div class="options">
-        <button class="btn danger" type="button" data-v="sim">Sim, é uma emergência</button>
+        <button class="btn danger" type="button" data-v="sim">Sim</button>
         <button class="btn center" type="button" data-v="nao">Não</button>
       </div>
     </div>
