@@ -683,6 +683,55 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
 }
 .link-btn:hover { filter: brightness(1.07); }
 
+.alert-samu {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 26%, transparent);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  margin-bottom: 14px;
+}
+.alert-samu h2 { color: inherit; }
+.alert-samu p { color: inherit; opacity: .92; font-size: 0.9rem; margin: 0 0 4px; }
+
+/* --------------------------- Sinergias (combinações) --------------------- */
+
+.syn-list { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
+
+.syn-item {
+  border-left: 3px solid var(--upa);
+  background: var(--surface-2);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  padding: 12px 14px;
+}
+.syn-item.hospital { border-left-color: var(--hospital); }
+.syn-item.samu_hospital { border-left-color: var(--danger); }
+
+.syn-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.syn-title { font-weight: 700; font-size: 0.9rem; line-height: 1.35; }
+.syn-why { font-size: 0.83rem; color: var(--muted); line-height: 1.45; }
+
+.syn-badge {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 3px 8px;
+  border-radius: var(--r-full);
+  white-space: nowrap;
+  background: var(--upa-soft);
+  color: var(--upa);
+}
+.syn-badge.hospital { background: var(--hospital-soft); color: var(--hospital); }
+.syn-badge.samu_hospital { background: var(--danger-soft); color: var(--danger); }
+
 .alert-police {
   background: var(--police-soft);
   color: var(--police);

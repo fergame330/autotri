@@ -1168,7 +1168,23 @@ function computeResultado() {
     })
   );
 
-  return { destino: hospital ? "hospital" : upa ? "upa" : "ubs", policia, selecionados };
+  const base = hospital ? "hospital" : upa ? "upa" : "ubs";
+
+  // As sinergias (sinergias.js) só elevam o resultado da tabela base.
+  // Se o arquivo não carregar, a triagem base continua valendo.
+  const sin =
+    typeof avaliaSinergias === "function"
+      ? avaliaSinergias(state, base)
+      : { destino: base, samu: false, disparadas: [] };
+
+  return {
+    destino: sin.destino,
+    samu: sin.samu,
+    sinergias: sin.disparadas,
+    base,
+    policia,
+    selecionados,
+  };
 }
 
 const DESTINO = {
@@ -1211,7 +1227,7 @@ const LABEL_SUB = {
 const LABEL_PUERP = { imediato: "Imediato", tardio: "Tardio", remoto: "Remoto" };
 
 function renderResultado() {
-  const { destino, policia, selecionados } = computeResultado();
+  const { destino, samu, sinergias, base, policia, selecionados } = computeResultado();
   const info = DESTINO[destino];
 
   const comorbs = [];
@@ -1232,14 +1248,33 @@ function renderResultado() {
 
   app.appendChild(
     h(`
-    <div class="verdict ${destino}">
+    <div class="verdict ${samu ? "samu" : destino}">
       <div class="verdict-kicker">Encaminhamento sugerido</div>
       <svg class="verdict-icon" viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${info.icon}</svg>
-      <div class="verdict-name">${info.nome}</div>
-      <div class="verdict-sub">${info.sub}</div>
+      <div class="verdict-name">${samu ? "SAMU + Hospital" : info.nome}</div>
+      <div class="verdict-sub">${
+        samu
+          ? "As combinações encontradas indicam risco alto. Ligue para o SAMU e vá ao hospital."
+          : info.sub
+      }</div>
     </div>
   `)
   );
+
+  if (samu) {
+    app.appendChild(
+      h(`
+      <div class="alert-samu">
+        <h2>Ligue para o SAMU agora</h2>
+        <p>O cruzamento do histórico de saúde com os sintomas relatados aponta risco de agravamento rápido. Não espere por transporte próprio se houver piora.</p>
+        <a class="call-btn solid-samu" href="tel:192">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M6.3 3.8h3.2l1.6 4-2 1.2a11.4 11.4 0 0 0 5.9 5.9l1.2-2 4 1.6v3.2a1.6 1.6 0 0 1-1.7 1.6A16.4 16.4 0 0 1 4.7 5.5a1.6 1.6 0 0 1 1.6-1.7Z"/></svg>
+          SAMU — 192
+        </a>
+      </div>
+    `)
+    );
+  }
 
   if (policia) {
     app.appendChild(
@@ -1267,6 +1302,34 @@ function renderResultado() {
     </div>
   `)
   );
+
+  if (sinergias.length) {
+    const NIVEL_TXT = { upa: "UPA", hospital: "Hospital", samu_hospital: "SAMU + Hospital" };
+    app.appendChild(
+      h(`
+      <div class="card">
+        <h2>Combinações de risco identificadas</h2>
+        <p class="hint">O cruzamento das suas respostas elevou o encaminhamento${
+          base !== destino || samu ? ` (a tabela isolada apontaria ${DESTINO[base].nome})` : ""
+        }. Mostre esta lista à equipe de saúde.</p>
+        <div class="syn-list">
+          ${sinergias
+            .map(
+              (s) => `
+            <div class="syn-item ${s.nivel}">
+              <div class="syn-head">
+                <span class="syn-title">${s.titulo}</span>
+                <span class="syn-badge ${s.nivel}">${NIVEL_TXT[s.nivel]}</span>
+              </div>
+              <div class="syn-why">${s.porque}</div>
+            </div>`
+            )
+            .join("")}
+        </div>
+      </div>
+    `)
+    );
+  }
 
   app.appendChild(
     h(`
