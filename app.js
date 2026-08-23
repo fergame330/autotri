@@ -402,8 +402,13 @@ const COMORBIDITY_CATEGORIES = [
   },
 ];
 
-/* ------------------------------- Estado --------------------------------- */
-/* Vive só em memória. Nada é escrito em localStorage/sessionStorage/cookies. */
+/* =========================================================================
+   Estado — vive só em memória.
+   Nada é escrito em localStorage / sessionStorage / cookies.
+   Recarregar ou fechar a página apaga tudo (inclusive o tema escolhido).
+   ========================================================================= */
+
+const app = document.getElementById("app");
 
 let state = null;
 let history_ = [];
@@ -420,9 +425,10 @@ function freshState() {
     gravida_tempo: "x", // 1 | 2 | 3 | "x"
     puerperio: "x", // "imediato" | "tardio" | "remoto" | "x"
     lactante: "nao",
-    comorbidades: {}, // id -> { checked: bool, extraValue }
-    sintomas: {}, // id -> { checked: bool, subIndex: number|null }
-    policia: false,
+    comorbidades: {}, // id -> { checked, extraValue }
+    sintomas: {}, // id -> { checked, subIndex }
+    // Acordeão: só a primeira seção começa aberta em cada tela.
+    aberto: { comorb: new Set([0]), sint: new Set([0]) },
   };
 }
 
@@ -432,9 +438,18 @@ function resetState() {
   render();
 }
 
-/* ------------------------------- Helpers --------------------------------- */
+/* -------------------------------- Tema ----------------------------------- */
+/* Também só em memória: ao recarregar volta ao padrão claro. */
 
-const app = document.getElementById("app");
+function initTheme() {
+  const btn = document.getElementById("theme-toggle");
+  btn.addEventListener("click", () => {
+    const atual = document.documentElement.getAttribute("data-theme");
+    document.documentElement.setAttribute("data-theme", atual === "dark" ? "light" : "dark");
+  });
+}
+
+/* ------------------------------- Utilidades ------------------------------ */
 
 function h(html) {
   const t = document.createElement("template");
@@ -442,40 +457,105 @@ function h(html) {
   return t.content;
 }
 
+function el(html) {
+  return h(html).firstElementChild;
+}
+
 function go(step) {
   history_.push(state.step);
   state.step = step;
   render();
-  window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+  window.scrollTo(0, 0);
 }
 
 function back() {
-  if (history_.length === 0) return;
+  if (!history_.length) return;
   state.step = history_.pop();
   render();
   window.scrollTo(0, 0);
 }
 
-function privacyBanner() {
-  return `<div class="privacy-banner">🔒 <span>Nenhum dado é salvo. Nada fica gravado neste ou em outro dispositivo — ao fechar ou recarregar a página, todas as respostas somem.</span></div>`;
+const STEP_META = {
+  quem: { n: 1, pct: 12 },
+  idade: { n: 2, pct: 26 },
+  semanas_bebe: { n: 2, pct: 33 },
+  sexo: { n: 3, pct: 43 },
+  gravidez: { n: 3, pct: 48 },
+  trimestre: { n: 3, pct: 53 },
+  puerperio_tempo: { n: 3, pct: 53 },
+  suspeita_gravidez: { n: 3, pct: 53 },
+  lactante: { n: 3, pct: 58 },
+  comorbidades: { n: 4, pct: 74 },
+  sintomas: { n: 5, pct: 92 },
+};
+const TOTAL_ETAPAS = 5;
+
+function progressHtml() {
+  const meta = STEP_META[state.step];
+  if (!meta) return "";
+  return `
+    <div class="progress">
+      <div class="progress-track"><div class="progress-fill" style="width:${meta.pct}%"></div></div>
+      <div class="progress-step">Etapa ${meta.n} de ${TOTAL_ETAPAS}</div>
+    </div>`;
 }
 
-function progressBar(pct) {
-  return h(`<div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>`);
-}
-
-function backButton() {
+function backHtml() {
   return history_.length
-    ? `<button class="btn ghost small" data-action="back">&larr; Voltar</button>`
+    ? `<button class="back-btn" type="button" data-action="back">
+         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg>
+         Voltar
+       </button>`
     : "";
 }
 
-/* ------------------------------- Render dispatch -------------------------------- */
+function wireBack() {
+  const b = app.querySelector('[data-action="back"]');
+  if (b) b.onclick = back;
+}
+
+const CARET = `<svg class="section-caret" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5 12 15.5 18 9.5"/></svg>`;
+
+/* -------------------- Componente: campo de intervalo (range) -------------- */
+
+function rangeFieldHtml(opts) {
+  const { id, min, max, value, unit, plusAtMax } = opts;
+  const fill = ((value - min) / (max - min)) * 100;
+  const shown = plusAtMax && value === max ? `${max}+` : `${value}`;
+  return `
+    <div class="range-field">
+      <div class="range-readout">
+        <div class="range-value" id="${id}-out">${shown}</div>
+        <span class="range-unit">${unit}</span>
+      </div>
+      <input type="range" id="${id}" min="${min}" max="${max}" step="1" value="${value}"
+             style="--fill:${fill}%" aria-label="${unit}" />
+      <div class="range-scale">
+        <span>${min}</span>
+        <span>${plusAtMax ? max + "+" : max}</span>
+      </div>
+    </div>`;
+}
+
+function wireRange(id, plusAtMax) {
+  const input = app.querySelector("#" + id);
+  const out = app.querySelector("#" + id + "-out");
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const update = () => {
+    const v = Number(input.value);
+    input.style.setProperty("--fill", ((v - min) / (max - min)) * 100 + "%");
+    out.textContent = plusAtMax && v === max ? `${max}+` : `${v}`;
+  };
+  input.addEventListener("input", update);
+  update();
+  return input;
+}
+
+/* ------------------------------- Render ---------------------------------- */
 
 function render() {
   app.innerHTML = "";
-  app.appendChild(h(privacyBanner()));
-
   const renderers = {
     intro: renderIntro,
     samu: renderSamu,
@@ -492,46 +572,55 @@ function render() {
     sintomas: renderSintomas,
     resultado: renderResultado,
   };
-
-  const fn = renderers[state.step] || renderIntro;
-  fn();
+  (renderers[state.step] || renderIntro)();
 }
 
-/* ------------------------------- Passo: Intro / Emergência -------------------------------- */
+/* --------------------------- 1. Emergência ------------------------------- */
 
 function renderIntro() {
   app.appendChild(
     h(`
     <div class="card">
-      <h1>Auto Triagem</h1>
-      <p class="lede">Responda algumas perguntas para saber para onde procurar ajuda: SAMU, Polícia, UBS, UPA ou Hospital. Isso não substitui uma avaliação médica presencial.</p>
-      <p class="question">É uma emergência — ou seja, você ou alguém sofre risco imediato (ou nos próximos minutos) de morte?</p>
+      <h1>Para onde procurar ajuda?</h1>
+      <p class="lede">Responda algumas perguntas rápidas e receba uma orientação de encaminhamento: SAMU, Polícia, UBS, UPA ou Hospital.</p>
+      <p class="question" style="margin-top:22px">É uma emergência — ou seja, você ou alguém sofre risco imediato (ou nos próximos minutos) de morte?</p>
       <div class="options">
-        <button class="btn danger" data-action="emergencia-sim">Sim</button>
-        <button class="btn" data-action="emergencia-nao">Não</button>
+        <button class="btn danger" type="button" data-v="sim">Sim, é uma emergência</button>
+        <button class="btn center" type="button" data-v="nao">Não</button>
       </div>
     </div>
   `)
   );
-  app.querySelector('[data-action="emergencia-sim"]').onclick = () => go("samu");
-  app.querySelector('[data-action="emergencia-nao"]').onclick = () => go("quem");
+  app.querySelector('[data-v="sim"]').onclick = () => go("samu");
+  app.querySelector('[data-v="nao"]').onclick = () => go("quem");
 }
 
 function renderSamu() {
   app.appendChild(
     h(`
-    <div class="card">
-      <div class="step-label">Emergência</div>
-      <h1>Ligue agora para o SAMU</h1>
-      <p class="lede">Em uma emergência com risco de morte, ligue imediatamente. Mantenha a calma e siga as orientações do atendente.</p>
-      <a class="call-btn samu" href="tel:192">📞 Ligar para o SAMU — 192</a>
-      <a class="call-btn outline samu" style="margin-top:10px;color:var(--samu)" href="tel:193">📞 Bombeiros (resgate) — 193</a>
+    <div class="verdict samu">
+      <div class="verdict-kicker">Emergência</div>
+      <svg class="verdict-icon" viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3.2a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6Z"/><path d="M12 7.6v5"/><path d="M12 16.1h.01"/>
+      </svg>
+      <div class="verdict-name">Ligue 192</div>
+      <div class="verdict-sub">Não espere. Ligue agora e siga as orientações do atendente.</div>
     </div>
+
     <div class="card">
-      <p style="margin:0 0 12px">Se a situação mudar e não for mais uma emergência com risco de morte, você pode continuar a triagem normalmente.</p>
+      <a class="call-btn solid-samu" href="tel:192">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M6.3 3.8h3.2l1.6 4-2 1.2a11.4 11.4 0 0 0 5.9 5.9l1.2-2 4 1.6v3.2a1.6 1.6 0 0 1-1.7 1.6A16.4 16.4 0 0 1 4.7 5.5a1.6 1.6 0 0 1 1.6-1.7Z"/></svg>
+        SAMU — 192
+      </a>
+      <a class="call-btn outline" style="color:var(--danger)" href="tel:193">Bombeiros / resgate — 193</a>
+      <a class="call-btn outline" style="color:var(--police)" href="tel:190">Polícia Militar — 190</a>
+    </div>
+
+    <div class="card">
+      <p class="lede">Se a situação mudar e não houver mais risco imediato de morte, você pode seguir com a triagem.</p>
       <div class="btn-row">
-        <button class="btn" data-action="continuar">Continuar triagem</button>
-        <button class="btn ghost" data-action="reiniciar">Recomeçar</button>
+        <button class="btn grow-2 center" type="button" data-action="continuar">Continuar triagem</button>
+        <button class="btn subtle" type="button" data-action="reiniciar">Recomeçar</button>
       </div>
     </div>
   `)
@@ -540,32 +629,32 @@ function renderSamu() {
   app.querySelector('[data-action="reiniciar"]').onclick = resetState;
 }
 
-/* ------------------------------- Passo: Quem -------------------------------- */
+/* ------------------------------ 2. Quem ---------------------------------- */
 
 function renderQuem() {
-  app.appendChild(progressBar(10));
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
+      ${backHtml()}
       <p class="question">É uma queixa para você ou para outra pessoa?</p>
       <div class="options">
-        <button class="btn" data-v="para_mim">Para mim</button>
-        <button class="btn" data-v="outra_pessoa">Para outra pessoa</button>
+        <button class="btn" type="button" data-v="para_mim">Para mim</button>
+        <button class="btn" type="button" data-v="outra_pessoa">Para outra pessoa</button>
       </div>
     </div>
   `)
   );
-  app.querySelectorAll("[data-v]").forEach((btn) => {
-    btn.onclick = () => {
-      state.quem = btn.dataset.v;
+  app.querySelectorAll("[data-v]").forEach((b) => {
+    b.onclick = () => {
+      state.quem = b.dataset.v;
       go("idade");
     };
   });
   wireBack();
 }
 
-/* ------------------------------- Passo: Idade -------------------------------- */
+/* ------------------------------ 3.1 Idade -------------------------------- */
 
 function classificaIdade(idade) {
   if (idade === "nao_sei") return "adulto_clinico";
@@ -576,151 +665,120 @@ function classificaIdade(idade) {
 }
 
 function renderIdade() {
-  app.appendChild(progressBar(18));
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
+      ${backHtml()}
       <p class="question">Qual a idade de quem apresenta os sintomas?</p>
-      <div class="field">
-        <input type="number" min="0" max="120" inputmode="numeric" id="idade-input" placeholder="Idade em anos" />
-      </div>
-      <div class="error-text" id="idade-error" style="display:none">Informe uma idade válida ou selecione "não sei".</div>
+      <p class="hint">Arraste para escolher. O valor máximo cobre 60 anos ou mais.</p>
+      ${rangeFieldHtml({ id: "idade-range", min: 0, max: 60, value: 30, unit: "anos", plusAtMax: true })}
       <div class="btn-row">
-        <button class="btn primary" data-action="confirmar">Confirmar</button>
-        <button class="btn ghost" data-action="nao-sei">Não sei</button>
+        <button class="btn primary grow-2" type="button" data-action="confirmar">Confirmar</button>
+        <button class="btn subtle" type="button" data-action="nao-sei">Não sei</button>
       </div>
     </div>
   `)
   );
 
-  const goNextFromIdade = (idadeVal) => {
-    state.idade = idadeVal;
-    state.populacao = classificaIdade(idadeVal);
-    if (idadeVal !== "nao_sei" && idadeVal <= 2) {
-      go("semanas_bebe");
-    } else {
-      go("sexo");
-    }
+  const input = wireRange("idade-range", true);
+
+  const avancar = (idade) => {
+    state.idade = idade;
+    state.populacao = classificaIdade(idade);
+    go(idade !== "nao_sei" && idade <= 2 ? "semanas_bebe" : "sexo");
   };
 
-  app.querySelector('[data-action="confirmar"]').onclick = () => {
-    const raw = app.querySelector("#idade-input").value;
-    const n = Number(raw);
-    if (raw === "" || Number.isNaN(n) || n < 0 || n > 130) {
-      app.querySelector("#idade-error").style.display = "block";
-      return;
-    }
-    goNextFromIdade(n);
-  };
-  app.querySelector('[data-action="nao-sei"]').onclick = () => goNextFromIdade("nao_sei");
+  app.querySelector('[data-action="confirmar"]').onclick = () => avancar(Number(input.value));
+  app.querySelector('[data-action="nao-sei"]').onclick = () => avancar("nao_sei");
   wireBack();
 }
 
-/* ------------------------------- Passo: Semanas do bebê -------------------------------- */
+/* -------------------------- 3.11 Semanas do bebê ------------------------- */
 
 function renderSemanasBebe() {
-  app.appendChild(progressBar(22));
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
+      ${backHtml()}
       <p class="question">Quantas semanas tem o bebê?</p>
-      <div class="field">
-        <input type="number" min="0" max="200" inputmode="numeric" id="semanas-input" placeholder="Semanas de vida" />
-      </div>
-      <div class="error-text" id="semanas-error" style="display:none">Informe um valor válido ou selecione "não sei".</div>
+      <p class="hint">Semanas de vida desde o nascimento.</p>
+      ${rangeFieldHtml({ id: "semanas-range", min: 0, max: 24, value: 8, unit: "semanas", plusAtMax: true })}
       <div class="btn-row">
-        <button class="btn primary" data-action="confirmar">Confirmar</button>
-        <button class="btn ghost" data-action="nao-sei">Não sei</button>
+        <button class="btn primary grow-2" type="button" data-action="confirmar">Confirmar</button>
+        <button class="btn subtle" type="button" data-action="nao-sei">Não sei</button>
       </div>
     </div>
   `)
   );
 
-  const setAndGo = (semanas) => {
+  const input = wireRange("semanas-range", true);
+
+  const avancar = (semanas) => {
     state.semanas_bebe = semanas;
-    if (semanas === "nao_sei") {
-      state.subpopulacao = "lactente";
-    } else if (semanas < 4) {
-      state.subpopulacao = "neonatal";
-    } else {
-      state.subpopulacao = "lactente";
-    }
+    state.subpopulacao = semanas !== "nao_sei" && semanas < 4 ? "neonatal" : "lactente";
     go("sexo");
   };
 
-  app.querySelector('[data-action="confirmar"]').onclick = () => {
-    const raw = app.querySelector("#semanas-input").value;
-    const n = Number(raw);
-    if (raw === "" || Number.isNaN(n) || n < 0) {
-      app.querySelector("#semanas-error").style.display = "block";
-      return;
-    }
-    setAndGo(n);
-  };
-  app.querySelector('[data-action="nao-sei"]').onclick = () => setAndGo("nao_sei");
+  app.querySelector('[data-action="confirmar"]').onclick = () => avancar(Number(input.value));
+  app.querySelector('[data-action="nao-sei"]').onclick = () => avancar("nao_sei");
   wireBack();
 }
 
-/* ------------------------------- Passo: Sexo biológico -------------------------------- */
+/* --------------------------- 3.2 Sexo biológico -------------------------- */
 
 function renderSexo() {
-  app.appendChild(progressBar(30));
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
+      ${backHtml()}
       <p class="question">Qual o sexo biológico de quem apresenta os sintomas?</p>
       <div class="options">
-        <button class="btn" data-v="homem">Homem biológico</button>
-        <button class="btn" data-v="mulher">Mulher biológica</button>
-        <button class="btn ghost" data-v="nao_sei">Não sei</button>
+        <button class="btn" type="button" data-v="homem">Homem biológico</button>
+        <button class="btn" type="button" data-v="mulher">Mulher biológica</button>
+        <button class="btn subtle" type="button" data-v="nao_sei">Não sei</button>
       </div>
     </div>
   `)
   );
-  app.querySelectorAll("[data-v]").forEach((btn) => {
-    btn.onclick = () => {
-      const v = btn.dataset.v;
-      if (v === "nao_sei") {
-        state.genero = "homem";
-        state.subpopulacao = state.subpopulacao === "x" ? "x" : state.subpopulacao;
-        go("comorbidades");
-      } else if (v === "homem") {
-        state.genero = "homem";
-        go("comorbidades");
-      } else {
+  app.querySelectorAll("[data-v]").forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.v === "mulher") {
         state.genero = "mulher";
         go("gravidez");
+      } else {
+        state.genero = "homem";
+        go("comorbidades");
       }
     };
   });
   wireBack();
 }
 
-/* ------------------------------- Passo: Gravidez / puerpério -------------------------------- */
+/* ------------------------ 3.21 Gravidez / puerpério ---------------------- */
 
 function renderGravidez() {
-  app.appendChild(progressBar(38));
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
+      ${backHtml()}
       <p class="question">Essa mulher está grávida ou fez o parto recentemente e ainda não menstruou?</p>
       <div class="options">
-        <button class="btn" data-v="gravida">Está grávida</button>
-        <button class="btn" data-v="puerperio">Fez o parto recentemente e ainda não menstruou</button>
-        <button class="btn" data-v="suspeita">Tem suspeita de gravidez</button>
-        <button class="btn" data-v="nao">Não está grávida nem fez parto recente</button>
-        <button class="btn ghost" data-v="nao_sei">Não sei</button>
+        <button class="btn" type="button" data-v="gravida">Está grávida</button>
+        <button class="btn" type="button" data-v="puerperio">Fez o parto recentemente e ainda não menstruou</button>
+        <button class="btn" type="button" data-v="suspeita">Tem suspeita de gravidez</button>
+        <button class="btn" type="button" data-v="nao">Não está grávida nem fez parto recente</button>
+        <button class="btn subtle" type="button" data-v="nao_sei">Não sei</button>
       </div>
     </div>
   `)
   );
-  app.querySelectorAll("[data-v]").forEach((btn) => {
-    btn.onclick = () => {
-      const v = btn.dataset.v;
+  app.querySelectorAll("[data-v]").forEach((b) => {
+    b.onclick = () => {
+      const v = b.dataset.v;
       if (v === "gravida") {
         state.subpopulacao = "gravida";
         go("trimestre");
@@ -739,33 +797,36 @@ function renderGravidez() {
   wireBack();
 }
 
+/* ---------------------------- 3.211 Trimestre ---------------------------- */
+
 function renderTrimestre() {
-  app.appendChild(progressBar(42));
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
+      ${backHtml()}
       <p class="question">Essa gestante está grávida há quantos trimestres?</p>
       <div class="chip-row">
-        <button class="btn" data-v="1">1º</button>
-        <button class="btn" data-v="2">2º</button>
-        <button class="btn" data-v="3">3º</button>
+        <button class="chip" type="button" data-v="1">1<small>trimestre</small></button>
+        <button class="chip" type="button" data-v="2">2<small>trimestre</small></button>
+        <button class="chip" type="button" data-v="3">3<small>trimestre</small></button>
       </div>
-      <div style="margin-top:10px">
-        <button class="btn ghost" data-v="nao_sei">Não sei</button>
+      <div class="btn-row">
+        <button class="btn subtle" type="button" data-v="nao_sei">Não sei</button>
       </div>
     </div>
   `)
   );
-  app.querySelectorAll("[data-v]").forEach((btn) => {
-    btn.onclick = () => {
-      const v = btn.dataset.v;
-      state.gravida_tempo = v === "nao_sei" ? 2 : Number(v);
+  app.querySelectorAll("[data-v]").forEach((b) => {
+    b.onclick = () => {
+      state.gravida_tempo = b.dataset.v === "nao_sei" ? 2 : Number(b.dataset.v);
       go("lactante");
     };
   });
   wireBack();
 }
+
+/* -------------------------- 3.212 Tempo de parto ------------------------- */
 
 function classificaPuerperio(dias) {
   if (dias === "nao_sei") return "tardio";
@@ -775,59 +836,54 @@ function classificaPuerperio(dias) {
 }
 
 function renderPuerperioTempo() {
-  app.appendChild(progressBar(42));
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
-      <p class="question">Há quanto tempo foi o parto? (em dias)</p>
-      <div class="field">
-        <input type="number" min="0" max="365" inputmode="numeric" id="puerperio-input" placeholder="Dias desde o parto" />
-      </div>
-      <div class="error-text" id="puerperio-error" style="display:none">Informe um valor válido ou selecione "não sei".</div>
+      ${backHtml()}
+      <p class="question">Há quanto tempo foi o parto?</p>
+      <p class="hint">Em dias. O valor máximo cobre 42 dias ou mais.</p>
+      ${rangeFieldHtml({ id: "parto-range", min: 0, max: 42, value: 14, unit: "dias", plusAtMax: true })}
       <div class="btn-row">
-        <button class="btn primary" data-action="confirmar">Confirmar</button>
-        <button class="btn ghost" data-action="nao-sei">Não sei</button>
+        <button class="btn primary grow-2" type="button" data-action="confirmar">Confirmar</button>
+        <button class="btn subtle" type="button" data-action="nao-sei">Não sei</button>
       </div>
     </div>
   `)
   );
-  const setAndGo = (dias) => {
+
+  const input = wireRange("parto-range", true);
+
+  const avancar = (dias) => {
     state.puerperio = classificaPuerperio(dias);
     go("lactante");
   };
-  app.querySelector('[data-action="confirmar"]').onclick = () => {
-    const raw = app.querySelector("#puerperio-input").value;
-    const n = Number(raw);
-    if (raw === "" || Number.isNaN(n) || n < 0) {
-      app.querySelector("#puerperio-error").style.display = "block";
-      return;
-    }
-    setAndGo(n);
-  };
-  app.querySelector('[data-action="nao-sei"]').onclick = () => setAndGo("nao_sei");
+
+  app.querySelector('[data-action="confirmar"]').onclick = () => avancar(Number(input.value));
+  app.querySelector('[data-action="nao-sei"]').onclick = () => avancar("nao_sei");
   wireBack();
 }
 
+/* ----------------------- 3.213 Suspeita de gravidez ---------------------- */
+
 function renderSuspeitaGravidez() {
-  app.appendChild(progressBar(42));
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
+      ${backHtml()}
       <p class="question">A menstruação está atrasada há mais de 7 dias?</p>
       <div class="options">
-        <button class="btn" data-v="sim">Sim</button>
-        <button class="btn" data-v="nao">Não</button>
-        <button class="btn ghost" data-v="nao_sei">Não sei</button>
+        <button class="btn" type="button" data-v="sim">Sim</button>
+        <button class="btn" type="button" data-v="nao">Não</button>
+        <button class="btn subtle" type="button" data-v="nao_sei">Não sei</button>
       </div>
     </div>
   `)
   );
-  app.querySelectorAll("[data-v]").forEach((btn) => {
-    btn.onclick = () => {
-      const v = btn.dataset.v;
-      if (v === "nao") {
+  app.querySelectorAll("[data-v]").forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.v === "nao") {
         state.subpopulacao = "x";
       } else {
         state.subpopulacao = "gravida";
@@ -839,181 +895,240 @@ function renderSuspeitaGravidez() {
   wireBack();
 }
 
+/* ------------------------------ 3.22 Lactante ---------------------------- */
+
 function renderLactante() {
-  app.appendChild(progressBar(46));
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
+      ${backHtml()}
       <p class="question">Essa mulher é lactante / amamenta?</p>
       <div class="options">
-        <button class="btn" data-v="sim">Sim</button>
-        <button class="btn" data-v="nao">Não</button>
-        <button class="btn ghost" data-v="nao_sei">Não sei</button>
+        <button class="btn" type="button" data-v="sim">Sim</button>
+        <button class="btn" type="button" data-v="nao">Não</button>
+        <button class="btn subtle" type="button" data-v="nao_sei">Não sei</button>
       </div>
     </div>
   `)
   );
-  app.querySelectorAll("[data-v]").forEach((btn) => {
-    btn.onclick = () => {
-      const v = btn.dataset.v;
-      state.lactante = v === "sim" ? "sim" : "nao";
+  app.querySelectorAll("[data-v]").forEach((b) => {
+    b.onclick = () => {
+      state.lactante = b.dataset.v === "sim" ? "sim" : "nao";
       go("comorbidades");
     };
   });
   wireBack();
 }
 
-/* ------------------------------- Passo: Comorbidades -------------------------------- */
+/* ------------------- Acordeão de itens marcáveis (4 e 5) ----------------- */
 
-function renderComorbidades() {
-  app.appendChild(progressBar(58));
+function itemHtml(item, kind) {
+  const store = kind === "sint" ? state.sintomas : state.comorbidades;
+  const st = store[item.id];
+  const checked = !!(st && st.checked);
+  let extra = "";
 
-  let itemsHtml = "";
-  COMORBIDITY_CATEGORIES.forEach((cat) => {
-    itemsHtml += `<div class="category-title">${cat.title}</div><div class="checklist">`;
-    cat.items.forEach((item) => {
-      const st = state.comorbidades[item.id];
-      const checked = st && st.checked;
-      itemsHtml += `
-        <div class="check-item ${checked ? "checked" : ""}" data-item="${item.id}">
-          <label class="check-item-header">
-            <input type="checkbox" data-check="${item.id}" ${checked ? "checked" : ""} />
-            <span>${item.label}</span>
-          </label>
-          ${
-            item.extra && checked
-              ? `<div class="extra-field">
-                  ${
-                    item.extra.type === "checkbox"
-                      ? `<label class="sub-opt"><input type="checkbox" data-extra="${item.id}" ${
-                          st && st.extraValue ? "checked" : ""
-                        } /> ${item.extra.label}</label>`
-                      : `<label class="field-label">${item.extra.label}</label>
-                         <input type="date" data-extra="${item.id}" value="${st && st.extraValue ? st.extraValue : ""}" />`
-                  }
-                </div>`
-              : ""
-          }
-        </div>`;
-    });
-    itemsHtml += `</div>`;
+  if (checked && kind === "sint" && item.sub) {
+    extra = `
+      <div class="follow-up">
+        <div class="follow-up-label">Qual descreve melhor?</div>
+        <div class="radio-list">
+          ${item.sub.options
+            .map(
+              (o, i) => `
+            <label class="radio-opt">
+              <input type="radio" name="sub-${item.id}" data-sub="${item.id}" value="${i}" ${
+                st.subIndex === i ? "checked" : ""
+              } />
+              <span>${o.label}</span>
+            </label>`
+            )
+            .join("")}
+        </div>
+      </div>`;
+  }
+
+  if (checked && kind === "comorb" && item.extra) {
+    extra =
+      item.extra.type === "checkbox"
+        ? `<div class="extra-field">
+             <label class="radio-opt">
+               <input type="checkbox" data-extra="${item.id}" ${st.extraValue ? "checked" : ""} />
+               <span>${item.extra.label}</span>
+             </label>
+           </div>`
+        : `<div class="extra-field">
+             <span class="extra-label">${item.extra.label}</span>
+             <input type="date" data-extra="${item.id}" value="${st.extraValue || ""}" />
+           </div>`;
+  }
+
+  return `
+    <div class="check-item ${checked ? "checked" : ""}" data-item="${item.id}">
+      <label class="check-head">
+        <input type="checkbox" data-check="${item.id}" ${checked ? "checked" : ""} />
+        <span>${item.label}</span>
+      </label>
+      ${extra}
+    </div>`;
+}
+
+function accordionHtml(categories, kind) {
+  const abertas = state.aberto[kind];
+  return `<div class="accordion">${categories
+    .map((cat, i) => {
+      const marcados = contaMarcados(cat, kind);
+      return `
+      <div class="section ${abertas.has(i) ? "open" : ""} ${marcados ? "has-marks" : ""}" data-sec="${i}">
+        <button class="section-head" type="button" data-toggle="${i}" aria-expanded="${abertas.has(i)}">
+          <span class="section-title">${cat.title}</span>
+          ${marcados ? `<span class="section-count">${marcados}</span>` : ""}
+          ${CARET}
+        </button>
+        <div class="section-body">
+          ${cat.items.map((item) => itemHtml(item, kind)).join("")}
+        </div>
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+function contaMarcados(cat, kind) {
+  const store = kind === "sint" ? state.sintomas : state.comorbidades;
+  return cat.items.filter((it) => store[it.id] && store[it.id].checked).length;
+}
+
+/* Atualiza o contador e o destaque de uma seção sem redesenhar a tela. */
+function atualizaSecao(categories, kind, secEl) {
+  const idx = Number(secEl.dataset.sec);
+  const marcados = contaMarcados(categories[idx], kind);
+  secEl.classList.toggle("has-marks", marcados > 0);
+  const head = secEl.querySelector(".section-head");
+  let badge = head.querySelector(".section-count");
+  if (marcados) {
+    if (!badge) {
+      badge = el(`<span class="section-count"></span>`);
+      head.insertBefore(badge, head.querySelector(".section-caret"));
+    }
+    badge.textContent = marcados;
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
+/* Redesenha um único item no lugar, preservando a rolagem da página. */
+function trocaItem(item, kind, categories) {
+  const antigo = app.querySelector(`.check-item[data-item="${item.id}"]`);
+  if (!antigo) return;
+  const secEl = antigo.closest(".section");
+  const novo = el(itemHtml(item, kind));
+  antigo.replaceWith(novo);
+  ligaItem(novo, item, kind, categories);
+  atualizaSecao(categories, kind, secEl);
+}
+
+function ligaItem(node, item, kind, categories) {
+  const store = kind === "sint" ? state.sintomas : state.comorbidades;
+
+  const cb = node.querySelector("[data-check]");
+  cb.onchange = () => {
+    if (!store[item.id]) store[item.id] = { checked: false, subIndex: null, extraValue: null };
+    store[item.id].checked = cb.checked;
+    if (!cb.checked) {
+      store[item.id].subIndex = null;
+      store[item.id].extraValue = null;
+    }
+    trocaItem(item, kind, categories);
+  };
+
+  node.querySelectorAll("[data-sub]").forEach((r) => {
+    r.onchange = () => {
+      store[item.id].subIndex = Number(r.value);
+    };
   });
 
+  node.querySelectorAll("[data-extra]").forEach((f) => {
+    f.onchange = () => {
+      store[item.id].extraValue = f.type === "checkbox" ? f.checked : f.value;
+    };
+  });
+}
+
+function ligaAcordeao(categories, kind) {
+  app.querySelectorAll("[data-toggle]").forEach((head) => {
+    head.onclick = () => {
+      const i = Number(head.dataset.toggle);
+      const sec = head.closest(".section");
+      const abertas = state.aberto[kind];
+      if (abertas.has(i)) abertas.delete(i);
+      else abertas.add(i);
+      sec.classList.toggle("open", abertas.has(i));
+      head.setAttribute("aria-expanded", String(abertas.has(i)));
+    };
+  });
+
+  categories.forEach((cat) =>
+    cat.items.forEach((item) => {
+      const node = app.querySelector(`.check-item[data-item="${item.id}"]`);
+      if (node) ligaItem(node, item, kind, categories);
+    })
+  );
+}
+
+/* --------------------------- 4. Histórico de saúde ----------------------- */
+
+function renderComorbidades() {
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
-      <div class="step-label">Histórico de saúde</div>
-      <p class="question">Marque abaixo as condições que você sabe que a pessoa tem</p>
-      <p class="lede" style="margin-top:-8px">Isso é opcional, mas ajuda a equipe de saúde a te atender melhor. Pode pular se não souber.</p>
-      ${itemsHtml}
+      ${backHtml()}
+      <span class="eyebrow">Histórico de saúde</span>
+      <p class="question">Marque as condições que você sabe que a pessoa tem</p>
+      <p class="hint">Opcional — mas ajuda a equipe de saúde a avaliar melhor. Toque em uma seção para abrir.</p>
+      ${accordionHtml(COMORBIDITY_CATEGORIES, "comorb")}
       <div class="btn-row">
-        <button class="btn primary" data-action="continuar">Continuar</button>
+        <button class="btn primary" type="button" data-action="continuar">Continuar</button>
       </div>
     </div>
   `)
   );
-
-  app.querySelectorAll("[data-check]").forEach((cb) => {
-    cb.onchange = () => {
-      const id = cb.dataset.check;
-      if (!state.comorbidades[id]) state.comorbidades[id] = { checked: false, extraValue: null };
-      state.comorbidades[id].checked = cb.checked;
-      render();
-    };
-  });
-  app.querySelectorAll("[data-extra]").forEach((el) => {
-    el.onchange = () => {
-      const id = el.dataset.extra;
-      const val = el.type === "checkbox" ? el.checked : el.value;
-      if (!state.comorbidades[id]) state.comorbidades[id] = { checked: true, extraValue: null };
-      state.comorbidades[id].extraValue = val;
-    };
-  });
-
+  ligaAcordeao(COMORBIDITY_CATEGORIES, "comorb");
   app.querySelector('[data-action="continuar"]').onclick = () => go("sintomas");
   wireBack();
 }
 
-/* ------------------------------- Passo: Sintomas -------------------------------- */
+/* ------------------------------- 5. Sintomas ----------------------------- */
 
 function renderSintomas() {
-  app.appendChild(progressBar(80));
-
-  let itemsHtml = "";
-  SYMPTOM_CATEGORIES.forEach((cat) => {
-    itemsHtml += `<div class="category-title">${cat.title}</div><div class="checklist">`;
-    cat.items.forEach((item) => {
-      const st = state.sintomas[item.id];
-      const checked = st && st.checked;
-      itemsHtml += `
-        <div class="check-item ${checked ? "checked" : ""}" data-item="${item.id}">
-          <label class="check-item-header">
-            <input type="checkbox" data-check="${item.id}" ${checked ? "checked" : ""} />
-            <span>${item.label}</span>
-          </label>
-          ${
-            item.sub && checked
-              ? `<div class="sub-question">
-                  <div class="sub-q-text">Selecione a opção que melhor descreve:</div>
-                  <div class="sub-options">
-                    ${item.sub.options
-                      .map(
-                        (opt, i) => `
-                      <label class="sub-opt">
-                        <input type="radio" name="sub-${item.id}" data-sub="${item.id}" value="${i}" ${
-                          st && st.subIndex === i ? "checked" : ""
-                        } />
-                        ${opt.label}
-                      </label>`
-                      )
-                      .join("")}
-                  </div>
-                </div>`
-              : ""
-          }
-        </div>`;
-    });
-    itemsHtml += `</div>`;
-  });
-
   app.appendChild(
     h(`
+    ${progressHtml()}
     <div class="card">
-      ${backButton()}
-      <div class="step-label">Sintomas</div>
-      <p class="question">Marque abaixo os sintomas que a pessoa apresenta</p>
-      <p class="lede" style="margin-top:-8px">Selecione todos que se aplicam. Alguns sintomas têm uma pergunta extra para entender melhor a gravidade.</p>
-      ${itemsHtml}
-      <div class="error-text" id="sintomas-error" style="display:none">Selecione pelo menos um sintoma para continuar.</div>
+      ${backHtml()}
+      <span class="eyebrow">Sintomas</span>
+      <p class="question">Marque os sintomas que a pessoa apresenta</p>
+      <p class="hint">Selecione todos que se aplicam. Alguns abrem uma pergunta extra sobre a gravidade.</p>
+      ${accordionHtml(SYMPTOM_CATEGORIES, "sint")}
+      <div class="error-text" id="erro-sintomas" hidden>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.8v4.6M12 16.2h.01"/></svg>
+        Selecione pelo menos um sintoma para continuar.
+      </div>
       <div class="btn-row">
-        <button class="btn primary" data-action="finalizar">Ver encaminhamento</button>
+        <button class="btn primary" type="button" data-action="finalizar">Ver encaminhamento</button>
       </div>
     </div>
   `)
   );
-
-  app.querySelectorAll("[data-check]").forEach((cb) => {
-    cb.onchange = () => {
-      const id = cb.dataset.check;
-      if (!state.sintomas[id]) state.sintomas[id] = { checked: false, subIndex: null };
-      state.sintomas[id].checked = cb.checked;
-      if (!cb.checked) state.sintomas[id].subIndex = null;
-      render();
-    };
-  });
-  app.querySelectorAll("[data-sub]").forEach((radio) => {
-    radio.onchange = () => {
-      const id = radio.dataset.sub;
-      state.sintomas[id].subIndex = Number(radio.value);
-    };
-  });
+  ligaAcordeao(SYMPTOM_CATEGORIES, "sint");
 
   app.querySelector('[data-action="finalizar"]').onclick = () => {
-    const anyChecked = Object.values(state.sintomas).some((s) => s.checked);
-    if (!anyChecked) {
-      app.querySelector("#sintomas-error").style.display = "block";
+    const algum = Object.values(state.sintomas).some((s) => s.checked);
+    if (!algum) {
+      const erro = app.querySelector("#erro-sintomas");
+      erro.hidden = false;
+      erro.scrollIntoView({ block: "center", behavior: "smooth" });
       return;
     }
     go("resultado");
@@ -1021,109 +1136,107 @@ function renderSintomas() {
   wireBack();
 }
 
-/* ------------------------------- Cálculo do resultado -------------------------------- */
+/* ------------------------------ Resultado -------------------------------- */
 
 function computeResultado() {
-  let hasHospital = false;
-  let hasUpa = false;
-  let hasUbs = false;
+  let hospital = false;
+  let upa = false;
   let policia = false;
   const selecionados = [];
 
-  SYMPTOM_CATEGORIES.forEach((cat) => {
+  SYMPTOM_CATEGORIES.forEach((cat) =>
     cat.items.forEach((item) => {
       const st = state.sintomas[item.id];
       if (!st || !st.checked) return;
 
-      let code, extraLabel = "", policiaFlag = false;
+      let code, detalhe = "";
       if (item.sub) {
+        // Sem resposta na sub-pergunta, assume a última opção ("não sei"),
+        // que é sempre a mais conservadora da lista.
         const opt = item.sub.options[st.subIndex ?? item.sub.options.length - 1];
         code = opt.code;
-        extraLabel = opt.label;
-        policiaFlag = !!opt.policia;
+        detalhe = opt.label;
+        if (opt.policia) policia = true;
       } else {
         code = item.code;
       }
 
-      if (policiaFlag) policia = true;
-      if (code.includes(2)) hasHospital = true;
-      else if (code.includes(1)) hasUpa = true;
-      else hasUbs = true;
+      if (code.includes(2)) hospital = true;
+      else if (code.includes(1)) upa = true;
 
-      selecionados.push({ label: item.label, detail: extraLabel });
-    });
-  });
-
-  let destino;
-  if (hasHospital) destino = "hospital";
-  else if (hasUpa) destino = "upa";
-  else destino = "ubs";
-
-  return { destino, policia, selecionados };
-}
-
-const DESTINO_INFO = {
-  hospital: {
-    titulo: "Hospital",
-    sub: "Seus sintomas indicam necessidade de atendimento hospitalar imediato.",
-    classe: "hospital",
-    texto: "Procure o pronto-socorro de um hospital o quanto antes. Se a situação piorar a caminho, ligue para o SAMU (192).",
-  },
-  upa: {
-    titulo: "UPA",
-    sub: "Seus sintomas indicam necessidade de atendimento de urgência.",
-    classe: "upa",
-    texto: "Procure a Unidade de Pronto Atendimento (UPA) mais próxima.",
-  },
-  ubs: {
-    titulo: "UBS",
-    sub: "Seus sintomas podem ser avaliados na atenção básica.",
-    classe: "ubs",
-    texto: "Procure a Unidade Básica de Saúde (UBS) da sua região, de preferência a que você é vinculado(a).",
-  },
-};
-
-function populacaoLabel(p) {
-  return (
-    {
-      crianca_clinica: "Criança",
-      adolescente_clinico: "Adolescente",
-      adulto_clinico: "Adulto",
-      idoso_clinico: "Idoso",
-    }[p] || "—"
-  );
-}
-function subpopulacaoLabel(s) {
-  return (
-    {
-      neonatal: "Neonatal",
-      lactente: "Lactente",
-      gravida: "Gestante",
-      puerperio: "Puerpério",
-      possivel_gravida: "Possível gravidez",
-      x: "—",
-    }[s] || "—"
-  );
-}
-
-function renderResultado() {
-  const { destino, policia, selecionados } = computeResultado();
-  const info = DESTINO_INFO[destino];
-
-  const comorbidadesSelecionadas = [];
-  COMORBIDITY_CATEGORIES.forEach((cat) =>
-    cat.items.forEach((item) => {
-      const st = state.comorbidades[item.id];
-      if (st && st.checked) comorbidadesSelecionadas.push(item.label);
+      selecionados.push({ label: item.label, detail: detalhe });
     })
   );
 
+  return { destino: hospital ? "hospital" : upa ? "upa" : "ubs", policia, selecionados };
+}
+
+const DESTINO = {
+  hospital: {
+    nome: "Hospital",
+    sub: "Os sintomas indicam necessidade de atendimento hospitalar.",
+    texto: "Procure o pronto-socorro de um hospital o quanto antes. Se piorar no caminho, ligue para o SAMU (192).",
+    busca: "hospital pronto socorro",
+    icon: `<path d="M4.5 20.5V8.8L12 4l7.5 4.8v11.7Z"/><path d="M12 10.2v5.4M9.3 12.9h5.4"/>`,
+  },
+  upa: {
+    nome: "UPA",
+    sub: "Os sintomas indicam necessidade de atendimento de urgência.",
+    texto: "Procure a Unidade de Pronto Atendimento (UPA) mais próxima. Elas funcionam 24 horas.",
+    busca: "UPA unidade de pronto atendimento",
+    icon: `<circle cx="12" cy="12" r="8.6"/><path d="M12 7.1v5.1l3.2 2"/>`,
+  },
+  ubs: {
+    nome: "UBS",
+    sub: "Os sintomas podem ser avaliados na atenção básica.",
+    texto: "Procure a Unidade Básica de Saúde (UBS) da sua região — de preferência aquela em que você é cadastrado.",
+    busca: "UBS unidade básica de saúde posto de saúde",
+    icon: `<path d="M4.4 10.6 12 4.5l7.6 6.1v9.4H4.4Z"/><path d="M12 12.4v4.2M9.9 14.5h4.2"/>`,
+  },
+};
+
+const LABEL_POP = {
+  crianca_clinica: "Criança",
+  adolescente_clinico: "Adolescente",
+  adulto_clinico: "Adulto",
+  idoso_clinico: "Idoso",
+};
+const LABEL_SUB = {
+  neonatal: "Recém-nascido (neonatal)",
+  lactente: "Lactente",
+  gravida: "Gestante",
+  puerperio: "Puerpério",
+  possivel_gravida: "Possível gravidez",
+};
+const LABEL_PUERP = { imediato: "Imediato", tardio: "Tardio", remoto: "Remoto" };
+
+function renderResultado() {
+  const { destino, policia, selecionados } = computeResultado();
+  const info = DESTINO[destino];
+
+  const comorbs = [];
+  COMORBIDITY_CATEGORIES.forEach((cat) =>
+    cat.items.forEach((item) => {
+      const st = state.comorbidades[item.id];
+      if (!st || !st.checked) return;
+      let txt = item.label;
+      if (item.extra && st.extraValue) {
+        txt += item.extra.type === "checkbox" ? ` (${item.extra.label.toLowerCase()})` : ` (${st.extraValue})`;
+      }
+      comorbs.push(txt);
+    })
+  );
+
+  const idadeTxt =
+    state.idade === "nao_sei" ? "Não informada" : state.idade === 60 ? "60 anos ou mais" : `${state.idade} anos`;
+
   app.appendChild(
     h(`
-    <div class="result-hero ${info.classe}">
-      <div class="sub-label">Encaminhamento sugerido</div>
-      <div class="big-label">${info.titulo}</div>
-      <div class="sub-label">${info.sub}</div>
+    <div class="verdict ${destino}">
+      <div class="verdict-kicker">Encaminhamento sugerido</div>
+      <svg class="verdict-icon" viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${info.icon}</svg>
+      <div class="verdict-name">${info.nome}</div>
+      <div class="verdict-sub">${info.sub}</div>
     </div>
   `)
   );
@@ -1131,28 +1244,25 @@ function renderResultado() {
   if (policia) {
     app.appendChild(
       h(`
-      <div class="police-alert">
-        <h2>Apoio à violência sexual</h2>
-        <p>Você indicou uma relação sexual não consensual. Além do atendimento de saúde, considere buscar apoio policial e, se possível, atendimento hospitalar em até 72 horas para profilaxias disponíveis.</p>
-        <a class="call-btn police" href="tel:190">📞 Polícia Militar — 190</a>
-        <a class="call-btn outline" style="margin-top:10px;color:var(--police)" href="tel:180">📞 Central de Atendimento à Mulher — 180</a>
-        <a class="call-btn outline" style="margin-top:10px;color:var(--police)" href="tel:100">📞 Disque Direitos Humanos — 100</a>
+      <div class="alert-police">
+        <h2>Apoio para violência sexual</h2>
+        <p>Você indicou uma relação sexual não consensual. Além do atendimento de saúde, considere acionar a polícia e buscar um hospital em até 72 horas — nesse prazo existem profilaxias disponíveis.</p>
+        <a class="call-btn solid-police" href="tel:190">Polícia Militar — 190</a>
+        <a class="call-btn outline" href="tel:180">Central de Atendimento à Mulher — 180</a>
+        <a class="call-btn outline" href="tel:100">Disque Direitos Humanos — 100</a>
       </div>
     `)
     );
   }
 
-  const mapsQuery = encodeURIComponent(
-    destino === "hospital" ? "hospital próximo" : destino === "upa" ? "UPA próxima" : "UBS próxima"
-  );
-
   app.appendChild(
     h(`
     <div class="card">
-      <p>${info.texto}</p>
-      <a class="btn primary" style="text-decoration:none;display:block;text-align:center" target="_blank" rel="noopener"
-         href="https://www.google.com/maps/search/?api=1&query=${mapsQuery}">
-        🗺️ Buscar unidade mais próxima
+      <p class="lede">${info.texto}</p>
+      <a class="link-btn" target="_blank" rel="noopener"
+         href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(info.busca)}">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 10.4c0 5.4-7.5 10.6-7.5 10.6s-7.5-5.2-7.5-10.6a7.5 7.5 0 0 1 15 0Z"/><circle cx="12" cy="10.3" r="2.6"/></svg>
+        Buscar unidade mais próxima
       </a>
     </div>
   `)
@@ -1161,31 +1271,35 @@ function renderResultado() {
   app.appendChild(
     h(`
     <div class="card">
-      <h2>Resumo para levar ao atendimento</h2>
-      <ul class="summary-list">
+      <h2>Resumo para o atendimento</h2>
+      <p class="hint" style="margin-bottom:0">Mostre estas informações à equipe de saúde.</p>
+
+      <ul class="sum-list">
         <li><span class="k">Queixa</span><span class="v">${state.quem === "para_mim" ? "Para mim" : "Para outra pessoa"}</span></li>
-        <li><span class="k">Idade</span><span class="v">${state.idade === "nao_sei" ? "Não informada" : state.idade + " anos"}</span></li>
-        <li><span class="k">Faixa</span><span class="v">${populacaoLabel(state.populacao)}</span></li>
-        ${state.subpopulacao !== "x" ? `<li><span class="k">Perfil adicional</span><span class="v">${subpopulacaoLabel(state.subpopulacao)}</span></li>` : ""}
+        <li><span class="k">Idade</span><span class="v">${idadeTxt}</span></li>
+        <li><span class="k">Faixa etária</span><span class="v">${LABEL_POP[state.populacao] || "—"}</span></li>
+        <li><span class="k">Sexo biológico</span><span class="v">${state.genero === "mulher" ? "Feminino" : "Masculino"}</span></li>
+        ${LABEL_SUB[state.subpopulacao] ? `<li><span class="k">Condição</span><span class="v">${LABEL_SUB[state.subpopulacao]}</span></li>` : ""}
         ${state.subpopulacao === "gravida" ? `<li><span class="k">Trimestre</span><span class="v">${state.gravida_tempo}º</span></li>` : ""}
-        ${state.subpopulacao === "puerperio" ? `<li><span class="k">Puerpério</span><span class="v">${state.puerperio}</span></li>` : ""}
+        ${state.subpopulacao === "puerperio" ? `<li><span class="k">Puerpério</span><span class="v">${LABEL_PUERP[state.puerperio]}</span></li>` : ""}
         ${state.genero === "mulher" ? `<li><span class="k">Lactante</span><span class="v">${state.lactante === "sim" ? "Sim" : "Não"}</span></li>` : ""}
       </ul>
 
       ${
-        comorbidadesSelecionadas.length
-          ? `<h3>Condições de saúde informadas</h3><ul class="summary-list">${comorbidadesSelecionadas
-              .map((c) => `<li><span class="k">${c}</span></li>`)
-              .join("")}</ul>`
+        comorbs.length
+          ? `<div class="sum-heading">Condições de saúde</div>
+             <div class="pill-list">${comorbs.map((c) => `<span class="pill">${c}</span>`).join("")}</div>`
           : ""
       }
 
-      <h3>Sintomas informados</h3>
-      <ul class="summary-list">
+      <div class="sum-heading">Sintomas relatados</div>
+      <ul class="sum-list">
         ${selecionados
           .map(
             (s) =>
-              `<li><span class="k">${s.label}</span>${s.detail ? `<span class="v">${s.detail}</span>` : ""}</li>`
+              `<li class="stacked"><span class="k">${s.label}</span>${
+                s.detail ? `<span class="d">${s.detail}</span>` : ""
+              }</li>`
           )
           .join("")}
       </ul>
@@ -1195,28 +1309,24 @@ function renderResultado() {
 
   app.appendChild(
     h(`
+    <div class="note-card">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.8v4.6M12 16.2h.01"/></svg>
+      <span>Se piorar a qualquer momento, procure atendimento imediatamente ou ligue para o SAMU (192).</span>
+    </div>
     <div class="card">
-      <p class="lede" style="margin:0 0 12px">Se os sintomas piorarem a qualquer momento, procure atendimento imediatamente ou ligue para o SAMU (192).</p>
       <div class="btn-row">
-        <button class="btn ghost" data-action="reiniciar">Recomeçar triagem</button>
+        <button class="btn subtle" type="button" data-action="reiniciar">Recomeçar triagem</button>
       </div>
     </div>
-    <p class="disclaimer">Esta ferramenta é apenas um apoio para orientação inicial e não substitui avaliação médica. Nenhuma informação preenchida aqui é armazenada, enviada ou compartilhada — tudo é apagado ao sair desta página.</p>
   `)
   );
 
   app.querySelector('[data-action="reiniciar"]').onclick = resetState;
 }
 
-/* ------------------------------- Wiring util -------------------------------- */
-
-function wireBack() {
-  const btn = app.querySelector('[data-action="back"]');
-  if (btn) btn.onclick = back;
-}
-
-/* ------------------------------- Init -------------------------------- */
+/* --------------------------------- Início -------------------------------- */
 
 document.addEventListener("DOMContentLoaded", () => {
+  initTheme();
   resetState();
 });
