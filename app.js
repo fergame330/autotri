@@ -452,6 +452,7 @@ function freshState() {
     gravida_tempo: "x", // 1 | 2 | 3 | "x"
     puerperio: "x", // "imediato" | "tardio" | "remoto" | "x"
     lactante: "nao",
+    altura: null, // number (cm), só perguntada para crianças de 1 a 12 anos
     comorbidades: {}, // id -> { checked, extraValue }
     sintomas: {}, // id -> { checked, subIndex }
     // Acordeão do histórico de saúde: só a primeira seção começa aberta.
@@ -518,6 +519,15 @@ function back() {
   window.scrollTo(0, 0);
 }
 
+/* Depois do bloco de sexo/gravidez/lactação: crianças de 1 a 12 anos
+   respondem a altura (necessária para classificar a pressão arterial por
+   percentil); as demais idades seguem direto para o histórico de saúde. */
+function proximoAposGenero() {
+  const idade = state.idade;
+  if (typeof idade === "number" && idade >= 1 && idade <= 12) go("altura");
+  else go("comorbidades");
+}
+
 const STEP_META = {
   quem: { n: 1, pct: 12 },
   idade: { n: 2, pct: 26 },
@@ -528,6 +538,7 @@ const STEP_META = {
   puerperio_tempo: { n: 3, pct: 53 },
   suspeita_gravidez: { n: 3, pct: 53 },
   lactante: { n: 3, pct: 58 },
+  altura: { n: 3, pct: 61 },
   comorbidades: { n: 4, pct: 74 },
   sintomas: { n: 5, pct: 92 },
 };
@@ -619,6 +630,7 @@ function render() {
     puerperio_tempo: renderPuerperioTempo,
     suspeita_gravidez: renderSuspeitaGravidez,
     lactante: renderLactante,
+    altura: renderAltura,
     comorbidades: renderComorbidades,
     sintomas: renderSintomas,
     resultado: renderResultado,
@@ -801,7 +813,7 @@ function renderSexo() {
         go("gravidez");
       } else {
         state.genero = "homem";
-        go("comorbidades");
+        proximoAposGenero();
       }
     };
   });
@@ -966,10 +978,189 @@ function renderLactante() {
   app.querySelectorAll("[data-v]").forEach((b) => {
     b.onclick = () => {
       state.lactante = b.dataset.v === "sim" ? "sim" : "nao";
-      go("comorbidades");
+      proximoAposGenero();
     };
   });
   wireBack();
+}
+
+/* ------------------- 3.3 Altura (crianças de 1 a 12 anos) ---------------- */
+/* Régua horizontal arrastável, com as extremidades desvanescidas, e um
+   personagem cuja altura acompanha o valor. A altura é usada depois para
+   consultar a tabela de percentis de pressão arterial em dadospressao.js. */
+
+const ALT_MIN = 75;
+const ALT_MAX = 176;
+const ALT_PX_MIN = 92; // altura do personagem, em px, no valor mínimo
+const ALT_PX_MAX = 232; // altura do personagem, em px, no valor máximo
+const ALT_PX_CM = 12; // escala da régua: pixels por centímetro
+const ALT_VIEW_W = 280; // largura fixa da janela visível da régua
+const ALT_PAD = ALT_VIEW_W / 2;
+
+function alturaLabel(v) {
+  if (v === ALT_MIN) return `${ALT_MIN}-`;
+  if (v === ALT_MAX) return `${ALT_MAX}+`;
+  return `${v}`;
+}
+function alturaParaPx(v) {
+  return ALT_PX_MIN + ((v - ALT_MIN) / (ALT_MAX - ALT_MIN)) * (ALT_PX_MAX - ALT_PX_MIN);
+}
+function alturaOffset(v) {
+  return -(v - ALT_MIN) * ALT_PX_CM;
+}
+
+function alturaMarcasHtml() {
+  let out = "";
+  for (let v = ALT_MIN; v <= ALT_MAX; v++) {
+    const maior = v % 10 === 0;
+    const media = !maior && v % 5 === 0;
+    const x = ALT_PAD + (v - ALT_MIN) * ALT_PX_CM;
+    out += `<div class="altura-marca ${maior ? "maior" : media ? "media" : ""}" style="left:${x}px">${
+      maior ? `<span>${v}</span>` : ""
+    }</div>`;
+  }
+  return out;
+}
+
+/* Ilustração simples: silhueta com calça (menino) ou vestido (menina),
+   nas cores da própria identidade visual do app. */
+function personagemSvg(genero) {
+  const ehMenina = genero === "mulher";
+  const roupaBaixo = ehMenina
+    ? `<path d="M33 118 L26 197 Q50 206 74 197 L67 118 Z" fill="var(--brand)" />`
+    : `<path d="M33 118 L29 197 L47 197 L50 152 L53 197 L71 197 L67 118 Z" fill="var(--brand-strong)" />`;
+  const cabelo = ehMenina
+    ? `<path d="M18 42 Q19 10 50 8 Q81 10 82 42 Q82 60 73 63 Q79 42 50 36 Q21 42 27 63 Q18 60 18 42 Z" fill="#8a5a3d" />`
+    : `<path d="M21 32 Q23 11 50 11 Q77 11 79 32 Q79 24 50 24 Q21 24 21 32 Z" fill="#8a5a3d" />`;
+
+  return `
+    <svg viewBox="0 0 100 210" preserveAspectRatio="xMidYMax meet" role="img"
+         aria-label="${ehMenina ? "Menina" : "Menino"}">
+      <rect x="29" y="192" width="18" height="14" rx="5" fill="#3d4652" />
+      <rect x="53" y="192" width="18" height="14" rx="5" fill="#3d4652" />
+      ${roupaBaixo}
+      <rect x="29" y="70" width="42" height="54" rx="15" fill="var(--brand)" />
+      <rect x="14" y="76" width="15" height="46" rx="7.5" fill="#f2b98d" />
+      <rect x="71" y="76" width="15" height="46" rx="7.5" fill="#f2b98d" />
+      <circle cx="50" cy="43" r="27" fill="#f2b98d" />
+      ${cabelo}
+      <circle cx="41" cy="44" r="2.8" fill="#3d4652" />
+      <circle cx="59" cy="44" r="2.8" fill="#3d4652" />
+      <path d="M40 54 Q50 60 60 54" stroke="#3d4652" stroke-width="2.6" fill="none" stroke-linecap="round" />
+    </svg>`;
+}
+
+function renderAltura() {
+  const valorInicial = state.altura ?? 110;
+
+  app.appendChild(
+    h(`
+    ${progressHtml()}
+    <div class="card">
+      ${backHtml()}
+      <p class="question">Qual a altura dessa criança?</p>
+      <p class="hint">Arraste a régua até a altura medida.</p>
+
+      <div class="altura-readout">
+        <span class="altura-valor" id="altura-valor">${alturaLabel(valorInicial)}</span>
+        <span class="altura-un">cm</span>
+      </div>
+
+      <div class="altura-palco">
+        <div class="altura-chao"></div>
+        <div class="altura-personagem-wrap" id="altura-personagem-wrap" style="height:${alturaParaPx(valorInicial)}px">
+          ${personagemSvg(state.genero)}
+        </div>
+      </div>
+
+      <div class="altura-regua" id="altura-regua" tabindex="0" role="slider"
+           aria-label="Altura em centímetros"
+           aria-valuemin="${ALT_MIN}" aria-valuemax="${ALT_MAX}" aria-valuenow="${valorInicial}">
+        <div class="altura-ponteiro"></div>
+        <div class="altura-regua-mask">
+          <div class="altura-fita" id="altura-fita" style="transform:translateX(${alturaOffset(valorInicial)}px)">
+            ${alturaMarcasHtml()}
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn primary" type="button" data-action="continuar">Continuar</button>
+      </div>
+    </div>
+  `)
+  );
+
+  ligaAltura(valorInicial);
+  wireBack();
+}
+
+function ligaAltura(valorInicial) {
+  let valor = valorInicial;
+  const regua = app.querySelector("#altura-regua");
+  const fita = app.querySelector("#altura-fita");
+  const leitura = app.querySelector("#altura-valor");
+  const personagemWrap = app.querySelector("#altura-personagem-wrap");
+
+  const clamp = (v) => Math.min(ALT_MAX, Math.max(ALT_MIN, v));
+
+  const aplica = () => {
+    fita.style.transform = `translateX(${alturaOffset(valor)}px)`;
+    leitura.textContent = alturaLabel(valor);
+    personagemWrap.style.height = alturaParaPx(valor) + "px";
+    regua.setAttribute("aria-valuenow", String(valor));
+    state.altura = valor;
+  };
+  aplica(); // grava o valor inicial mesmo sem interação
+
+  let arrastando = false;
+  let inicioX = 0;
+  let valorInicioArraste = valor;
+
+  const mover = (ev) => {
+    if (!arrastando) return;
+    const deltaPx = ev.clientX - inicioX;
+    valor = clamp(Math.round(valorInicioArraste - deltaPx / ALT_PX_CM));
+    aplica();
+  };
+  const soltar = () => {
+    arrastando = false;
+    window.removeEventListener("pointermove", mover);
+    window.removeEventListener("pointerup", soltar);
+  };
+
+  regua.addEventListener("pointerdown", (ev) => {
+    arrastando = true;
+    inicioX = ev.clientX;
+    valorInicioArraste = valor;
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+  });
+
+  regua.addEventListener("keydown", (ev) => {
+    if (ev.key === "Home") {
+      valor = ALT_MIN;
+      aplica();
+      ev.preventDefault();
+      return;
+    }
+    if (ev.key === "End") {
+      valor = ALT_MAX;
+      aplica();
+      ev.preventDefault();
+      return;
+    }
+    const passo = ev.key === "PageUp" || ev.key === "PageDown" ? 10 : 1;
+    let d = 0;
+    if (ev.key === "ArrowRight" || ev.key === "ArrowUp" || ev.key === "PageUp") d = passo;
+    if (ev.key === "ArrowLeft" || ev.key === "ArrowDown" || ev.key === "PageDown") d = -passo;
+    if (!d) return;
+    ev.preventDefault();
+    valor = clamp(valor + d);
+    aplica();
+  });
+
+  app.querySelector('[data-action="continuar"]').onclick = () => go("comorbidades");
 }
 
 /* ------------------- Acordeão de itens marcáveis (4 e 5) ----------------- */
@@ -1085,8 +1276,19 @@ function trocaItem(item, kind, categories) {
   ligaItem(novo, item, kind, categories);
 
   // Histórico de saúde usa acordeão; sintomas usam partes com trilha de sistemas.
-  if (secEl) atualizaSecao(categories, kind, secEl);
-  else atualizaTrilha();
+  if (secEl) {
+    atualizaSecao(categories, kind, secEl);
+  } else {
+    atualizaTrilha();
+    // O item patcheado pode ter mudado de altura (ex.: abriu ou fechou uma
+    // sub-pergunta). Resincroniza o wrap só quando ele mostra #pane-main —
+    // se um painel estiver aberto, abrePainel/fechaPainel já cuidam disso.
+    const wrap = app.querySelector("#slide-wrap");
+    const main = app.querySelector("#pane-main");
+    if (wrap && main && !wrap.classList.contains("aberto")) {
+      animaAlturaSlide(wrap, wrap.offsetHeight, main.offsetHeight);
+    }
+  }
 }
 
 function ligaItem(node, item, kind, categories) {
@@ -1102,6 +1304,8 @@ function ligaItem(node, item, kind, categories) {
       store[item.id].medida = null;
       store[item.id].pressao = null;
       store[item.id].modo = "medir";
+      store[item.id].subEtapa = "medida";
+      store[item.id].alterada = null;
     }
     trocaItem(item, kind, categories);
 
@@ -1171,7 +1375,7 @@ function renderComorbidades() {
 
 /* ========================= Modal de confirmação ========================== */
 
-function abreModal({ titulo, texto, confirmar, cancelar, aoConfirmar }) {
+function abreModal({ titulo, texto, confirmar, cancelar, aoConfirmar, aoCancelar }) {
   const fundo = el(`
     <div class="modal-fundo" role="dialog" aria-modal="true">
       <div class="modal">
@@ -1189,7 +1393,10 @@ function abreModal({ titulo, texto, confirmar, cancelar, aoConfirmar }) {
     setTimeout(() => fundo.remove(), 200);
   };
 
-  fundo.querySelector('[data-m="cancelar"]').onclick = fecha;
+  fundo.querySelector('[data-m="cancelar"]').onclick = () => {
+    fecha();
+    if (aoCancelar) aoCancelar();
+  };
   fundo.querySelector('[data-m="ok"]').onclick = () => {
     fecha();
     aoConfirmar();
@@ -1213,27 +1420,44 @@ const PAINEIS = {
 
 function estadoItem(id) {
   if (!state.sintomas[id]) {
-    state.sintomas[id] = { checked: true, subIndex: null, medida: null, pressao: null, modo: "medir" };
+    state.sintomas[id] = {
+      checked: true,
+      subIndex: null,
+      medida: null,
+      pressao: null,
+      modo: "medir",
+      subEtapa: "medida", // pressão: "medida" | "confundidores"
+      alterada: null, // pressão: true/false depois da pergunta de fatores de alteração
+    };
   }
   const st = state.sintomas[id];
   if (st.modo === undefined) st.modo = "medir";
+  if (st.subEtapa === undefined) st.subEtapa = "medida";
   return st;
 }
 
-/* Anima a altura entre dois valores e devolve o contêiner a `auto`.
-   Em repouso a altura precisa ser automática: marcar um sintoma expande a
-   sub-pergunta, e uma altura fixa em pixels cortaria o resto do cartão. */
+/* Componente de slide horizontal com altura de repouso controlada por JS.
+   Usado no painel de sintomas (lista <-> medição) e, dentro do painel de
+   pressão, entre a medição e a pergunta sobre fatores de alteração.
+
+   A altura NUNCA fica em "auto": os dois painéis são irmãos num flex-row
+   (para o slide funcionar via transform), e um flex-row mede sua altura
+   pelo MAIOR filho — mesmo o que está fora de tela. Deixar a altura em
+   auto faz o contêiner "herdar" a altura do painel escondido sempre que
+   ele for mais alto que o visível, abrindo um vão em branco embaixo. */
 const DUR_SLIDE = 360;
 
-function animaAltura(de, para, aoFim) {
-  const wrap = app.querySelector("#slide-wrap");
-  if (!wrap) return;
-  clearTimeout(wrap._timerAltura);
-  wrap.style.height = de + "px";
-  void wrap.offsetHeight; // força o reflow para a transição sair do valor certo
-  wrap.style.height = para + "px";
-  wrap._timerAltura = setTimeout(() => {
-    wrap.style.height = "";
+function inicializaAlturaSlide(wrapEl, paneAtivoEl) {
+  wrapEl.style.height = paneAtivoEl.offsetHeight + "px";
+}
+
+function animaAlturaSlide(wrapEl, de, para, aoFim) {
+  if (!wrapEl) return;
+  clearTimeout(wrapEl._timerAltura);
+  wrapEl.style.height = de + "px";
+  void wrapEl.offsetHeight; // força o reflow para a transição sair do valor certo
+  wrapEl.style.height = para + "px";
+  wrapEl._timerAltura = setTimeout(() => {
     if (aoFim) aoFim();
   }, DUR_SLIDE);
 }
@@ -1269,7 +1493,7 @@ function abrePainel(item) {
   const de = app.querySelector("#pane-main").offsetHeight;
   const para = pane.offsetHeight;
   wrap.classList.add("aberto");
-  animaAltura(de, para);
+  animaAlturaSlide(wrap, de, para);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1283,24 +1507,38 @@ function fechaPainel(item) {
   trocaItem(item, "sint", SYMPTOM_CATEGORIES);
   const para = app.querySelector("#pane-main").offsetHeight;
 
-  animaAltura(de, para, () => {
+  animaAlturaSlide(wrap, de, para, () => {
     const pane = app.querySelector("#pane-painel");
     if (pane && !state.painel) pane.innerHTML = "";
   });
 }
 
-/* Alterna entre medir e escolher uma opção descritiva. */
-function trocaModoPainel(item, modo) {
-  const st = estadoItem(item.id);
+/* Reconstrói o corpo do painel a partir do estado atual do item — mesma
+   técnica para trocar entre medir/"não consigo medir" e, na pressão, entre
+   a medição e a pergunta de fatores de alteração. Resincroniza a altura do
+   wrap externo, já que o novo conteúdo quase sempre tem tamanho diferente. */
+function reconstroiCorpoPainel(item) {
+  const wrap = app.querySelector("#slide-wrap");
   const pane = app.querySelector("#pane-painel");
   const de = pane.offsetHeight;
 
-  st.modo = modo;
   const corpo = app.querySelector("#painel-corpo");
   corpo.innerHTML = PAINEIS[item.painel].montaHtml(item);
   PAINEIS[item.painel].liga(item);
 
-  animaAltura(de, pane.offsetHeight);
+  // Reinicia a animação de entrada — mesmo truque do "força o reflow" usado
+  // em animaAlturaSlide, para o corpo "deslizar" a cada troca, não só na 1ª.
+  corpo.classList.remove("painel-slide-in");
+  void corpo.offsetWidth;
+  corpo.classList.add("painel-slide-in");
+
+  animaAlturaSlide(wrap, de, pane.offsetHeight);
+}
+
+/* Alterna entre medir e escolher uma opção descritiva. */
+function trocaModoPainel(item, modo) {
+  estadoItem(item.id).modo = modo;
+  reconstroiCorpoPainel(item);
 }
 
 /* Lista de opções usada quando a pessoa não consegue medir. */
@@ -1489,10 +1727,83 @@ function paMarcasHtml() {
   return out;
 }
 
+/* Pergunta sobre fatores que podem alterar a leitura, mostrada antes de
+   fechar o painel de pressão (só quando houve medição numérica). */
+function confundidoresHtml() {
+  return `
+    <p class="question">Antes e/ou enquanto você mediu, você tomou café, fumou, bebeu álcool, praticou exercícios, comeu, ficou com a bexiga cheia, conversou ou cruzou as pernas?</p>
+    <p class="hint">Qualquer um desses fatores pode alterar temporariamente a leitura.</p>
+    <div class="options">
+      <button class="btn" type="button" data-conf="sim">Sim</button>
+      <button class="btn" type="button" data-conf="nao">Não</button>
+    </div>`;
+}
+
+function ligaConfundidores(item) {
+  app.querySelectorAll("[data-conf]").forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.conf === "sim") {
+        abreModal({
+          titulo: "A pressão pode estar alterada",
+          texto:
+            "Café, cigarro, álcool, exercício, uma refeição recente, a bexiga cheia, conversar ou cruzar as pernas podem alterar temporariamente a leitura.",
+          confirmar: "Medir novamente",
+          cancelar: "Continuar mesmo assim",
+          aoConfirmar: () => voltaParaMedida(item),
+          aoCancelar: () => finalizaPressao(item, true),
+        });
+      } else {
+        finalizaPressao(item, false);
+      }
+    };
+  });
+}
+
+function avancaParaConfundidores(item) {
+  estadoItem(item.id).subEtapa = "confundidores";
+  reconstroiCorpoPainel(item);
+}
+function voltaParaMedida(item) {
+  estadoItem(item.id).subEtapa = "medida";
+  reconstroiCorpoPainel(item);
+}
+function finalizaPressao(item, alterada) {
+  estadoItem(item.id).alterada = alterada;
+  fechaPainel(item);
+}
+
+/* Mostra/some o botão "Pronto"/"Continuar" compartilhado do painel e ajusta
+   seu rótulo e ação conforme a sub-etapa da pressão. A pergunta de
+   confundidores tem seus próprios botões Sim/Não, então o botão do rodapé
+   fica escondido enquanto ela estiver visível. */
+function configuraRodapePressao(item) {
+  const st = estadoItem(item.id);
+  const btn = app.querySelector('[data-p="pronto"]');
+  if (!btn) return;
+  const row = btn.closest(".btn-row");
+
+  if (st.modo === "medir" && st.subEtapa === "confundidores") {
+    if (row) row.hidden = true;
+    return;
+  }
+  if (row) row.hidden = false;
+
+  if (st.modo === "opcoes") {
+    btn.textContent = "Pronto";
+    btn.onclick = () => fechaPainel(item);
+  } else {
+    btn.textContent = "Continuar";
+    btn.onclick = () => avancaParaConfundidores(item);
+  }
+}
+
 function painelPressaoHtml(item) {
   const st = estadoItem(item.id);
   if (st.modo === "opcoes") {
     return opcoesPainelHtml(item, "Escolha o que mais se aproxima do que você sabe.");
+  }
+  if (st.subEtapa === "confundidores") {
+    return confundidoresHtml();
   }
 
   // Começa com uma bolinha no 0 e a outra no 300.
@@ -1540,6 +1851,12 @@ function ligaPainelPressao(item) {
 
   if (st.modo === "opcoes") {
     ligaOpcoesPainel(item);
+    configuraRodapePressao(item);
+    return;
+  }
+  if (st.subEtapa === "confundidores") {
+    ligaConfundidores(item);
+    configuraRodapePressao(item);
     return;
   }
 
@@ -1661,7 +1978,19 @@ function ligaPainelPressao(item) {
   redesenha();
 
   app.querySelector('[data-modo="opcoes"]').onclick = () => trocaModoPainel(item, "opcoes");
+  configuraRodapePressao(item);
 }
+
+/* Rótulos de exibição para o estágio da pressão (dadospressao.js /
+   sinergias.js usam as chaves internas, sem essa formatação). */
+const ROTULO_ESTAGIO_PA = {
+  normal: "Pressão normal",
+  "pre-hipertensão": "Pré-hipertensão",
+  hipertensão: "Hipertensão",
+  "hipertensão 1": "Hipertensão estágio 1",
+  "hipertensão 2": "Hipertensão estágio 2",
+  "hipertensão 3": "Hipertensão estágio 3",
+};
 
 /* Texto curto da medição, mostrado no item e no resumo final. */
 function resumoMedicao(item) {
@@ -1671,7 +2000,11 @@ function resumoMedicao(item) {
     return `${st.medida.toFixed(1)} °C · ${classificaTemperatura(st.medida).rotulo}`;
   }
   if (item.painel === "pressao" && st.pressao) {
-    return `${st.pressao.max} / ${st.pressao.min} mmHg`;
+    let txt = `${st.pressao.max} / ${st.pressao.min} mmHg`;
+    const estagio = typeof classificaPressao === "function" ? classificaPressao(state) : null;
+    if (estagio && ROTULO_ESTAGIO_PA[estagio]) txt += ` · ${ROTULO_ESTAGIO_PA[estagio]}`;
+    if (st.alterada) txt += " · possíveis fatores de alteração";
+    return txt;
   }
   if (st.subIndex != null && item.sub) return item.sub.options[st.subIndex].label;
   return "Sem resposta";
@@ -1816,6 +2149,7 @@ function renderSintomas() {
   wrap.addEventListener("scroll", () => {
     if (wrap.scrollLeft !== 0) wrap.scrollLeft = 0;
   });
+  inicializaAlturaSlide(wrap, app.querySelector("#pane-main"));
 
   wireBack();
 }
@@ -2061,6 +2395,7 @@ function renderResultado() {
         ${state.subpopulacao === "gravida" ? `<li><span class="k">Trimestre</span><span class="v">${state.gravida_tempo}º</span></li>` : ""}
         ${state.subpopulacao === "puerperio" ? `<li><span class="k">Puerpério</span><span class="v">${LABEL_PUERP[state.puerperio]}</span></li>` : ""}
         ${state.genero === "mulher" ? `<li><span class="k">Lactante</span><span class="v">${state.lactante === "sim" ? "Sim" : "Não"}</span></li>` : ""}
+        ${state.altura != null ? `<li><span class="k">Altura</span><span class="v">${state.altura} cm</span></li>` : ""}
       </ul>
 
       ${

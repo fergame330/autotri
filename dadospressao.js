@@ -716,4 +716,3 @@ var dados = {
 }
 }
 
-export default dados;

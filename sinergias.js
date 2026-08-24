@@ -47,6 +47,111 @@ function itemSintoma(id) {
   return _indiceSintomas[id];
 }
 
+/* ================== Classificação de pressão arterial ==================== */
+/* Usa as tabelas de dadospressao.js (variável global `dados`) para
+   classificar a leitura do manômetro em normal / pré-hipertensão /
+   hipertensão (1, 2 e, no adulto, 3), por faixa etária:
+
+     idade === 0             -> dados.neonatal (0 a 1 ano)
+     idade entre 1 e 12       -> dados.meninos/meninas[idade], por altura
+     idade entre 13 e 17      -> dados["maior de 13 e menor de 18"]
+     idade >= 18 ou "não sei" -> dados["maior de idade"]
+
+   Critério de estágio: a leitura atinge um patamar se a sistólica OU a
+   diastólica alcançar o valor de referência daquele patamar — o mesmo
+   critério usado nas diretrizes de aferição em que essas tabelas se
+   baseiam (o maior dos dois eixos manda). */
+
+function parsePA(str) {
+  const [sys, dia] = str.split("/").map(Number);
+  return { sys, dia };
+}
+
+/* Chave de altura (string) mais próxima do valor medido, dentro de um
+   dicionário {"altura_cm": "sys/dia"}. */
+function alturaMaisProxima(dict, altura) {
+  let melhor = null;
+  let menorDist = Infinity;
+  for (const chave of Object.keys(dict)) {
+    const d = Math.abs(Number(chave) - altura);
+    if (d < menorDist) {
+      menorDist = d;
+      melhor = chave;
+    }
+  }
+  return melhor;
+}
+
+/* `patamares` em ordem crescente de gravidade. Devolve o rótulo do
+   patamar mais alto atingido, ou "normal" se nenhum for atingido. */
+function classificaPorPatamares(leitura, patamares) {
+  let rotulo = "normal";
+  patamares.forEach((p) => {
+    if (leitura.sys >= p.limite.sys || leitura.dia >= p.limite.dia) rotulo = p.rotulo;
+  });
+  return rotulo;
+}
+
+/* Banda etária usada tanto para escolher a tabela quanto pelas sinergias
+   de roteamento (que tratam "criança" como 1–17, juntando a tabela por
+   percentil com a de adolescente). */
+function pressaoBanda(idade) {
+  if (typeof idade !== "number") return "adulto"; // "não sei" -> mesmo padrão da faixa etária geral
+  if (idade === 0) return "neonatal";
+  if (idade <= 17) return "crianca";
+  return "adulto";
+}
+
+/* Devolve o estágio da pressão para o estado atual, ou null quando não há
+   leitura numérica (sintoma não marcado, ou "não consigo medir"). */
+function classificaPressao(state) {
+  if (typeof dados === "undefined") return null; // dadospressao.js não carregou
+
+  const st = state.sintomas.pressao_arterial;
+  if (!st || !st.checked || !st.pressao) return null;
+  const leitura = { sys: st.pressao.max, dia: st.pressao.min };
+  const idade = state.idade;
+
+  if (typeof idade === "number" && idade === 0) {
+    const t = dados.neonatal;
+    return classificaPorPatamares(leitura, [
+      { rotulo: "pre-hipertensão", limite: parsePA(t.base) },
+      { rotulo: "hipertensão", limite: parsePA(t.hiper) },
+    ]);
+  }
+
+  if (typeof idade === "number" && idade >= 1 && idade <= 12) {
+    if (state.altura == null) return null; // sem altura não há como consultar a tabela
+    const grupo = state.genero === "mulher" ? dados.meninas : dados.meninos;
+    const porIdade = grupo && grupo[String(idade)];
+    if (!porIdade) return null;
+    const chave = alturaMaisProxima(porIdade.P90, state.altura);
+    return classificaPorPatamares(leitura, [
+      { rotulo: "pre-hipertensão", limite: parsePA(porIdade.P90[chave]) },
+      { rotulo: "hipertensão 1", limite: parsePA(porIdade.P95[chave]) },
+      { rotulo: "hipertensão 2", limite: parsePA(porIdade["P95+12"][chave]) },
+    ]);
+  }
+
+  if (typeof idade === "number" && idade >= 13 && idade <= 17) {
+    const t = dados["maior de 13 e menor de 18"];
+    return classificaPorPatamares(leitura, [
+      { rotulo: "pre-hipertensão", limite: parsePA(t.base) },
+      { rotulo: "hipertensão 1", limite: parsePA(t.pre) },
+      { rotulo: "hipertensão 2", limite: parsePA(t.hiper) },
+    ]);
+  }
+
+  // 18+ ou idade "não sei".
+  const t = dados["maior de idade"];
+  return classificaPorPatamares(leitura, [
+    { rotulo: "pre-hipertensão", limite: parsePA(t.base) },
+    { rotulo: "hipertensão 1", limite: parsePA(t.pre) },
+    { rotulo: "hipertensão 2", limite: parsePA(t.hiper) },
+    { rotulo: "hipertensão 3", limite: parsePA(t.mega) },
+  ]);
+}
+
 /* ---------------------------- Contexto de teste -------------------------- */
 
 function criaContexto(state) {
@@ -78,6 +183,8 @@ function criaContexto(state) {
     populacao: state.populacao,
     subpopulacao: state.subpopulacao,
     puerperio: state.puerperio,
+    pressaoEstagio: () => classificaPressao(state),
+    pressaoBanda: () => pressaoBanda(state.idade),
   };
 }
 
@@ -301,6 +408,51 @@ const SINERGIAS = [
       (c.symGrave("sangramento_vaginal_peniano") ||
         c.symGrave("sangramento_geral") ||
         c.sym("febre_hipotermia")),
+  },
+
+  /* ---------- Pressão arterial × idade (dadospressao.js) ----------
+     Só valem para quem NÃO tem hipertensão já diagnosticada — a pessoa
+     com hipertensão conhecida pode estar controlada, então uma leitura
+     alterada não é por si só um sinal de descompensação aguda. */
+  {
+    id: "pa_neonatal_hipertensao",
+    nivel: "hospital",
+    titulo: "Pressão em nível de hipertensão (até 1 ano, sem diagnóstico prévio)",
+    porque: "Em bebês até 1 ano sem hipertensão conhecida, esse nível de pressão pede avaliação hospitalar.",
+    quando: (c) => c.pressaoBanda() === "neonatal" && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão",
+  },
+  {
+    id: "pa_crianca_hipertensao1",
+    nivel: "upa",
+    titulo: "Pressão em hipertensão estágio 1 (1 a 17 anos, sem diagnóstico prévio)",
+    porque: "Sem hipertensão conhecida, esse nível pede avaliação de urgência.",
+    quando: (c) =>
+      c.pressaoBanda() === "crianca" && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão 1",
+  },
+  {
+    id: "pa_crianca_hipertensao2",
+    nivel: "hospital",
+    titulo: "Pressão em hipertensão estágio 2 (1 a 17 anos, sem diagnóstico prévio)",
+    porque: "Sem hipertensão conhecida, esse nível pede avaliação hospitalar.",
+    quando: (c) =>
+      c.pressaoBanda() === "crianca" && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão 2",
+  },
+  {
+    id: "pa_adulto_hipertensao1e2",
+    nivel: "upa",
+    titulo: "Pressão em hipertensão estágio 1 ou 2 (18 anos ou mais, sem diagnóstico prévio)",
+    porque: "Sem hipertensão conhecida, esse nível pede avaliação de urgência.",
+    quando: (c) =>
+      c.pressaoBanda() === "adulto" &&
+      !c.cond("hipertensao") &&
+      ["hipertensão 1", "hipertensão 2"].includes(c.pressaoEstagio()),
+  },
+  {
+    id: "pa_adulto_hipertensao3",
+    nivel: "hospital",
+    titulo: "Pressão em hipertensão estágio 3 (18 anos ou mais, sem diagnóstico prévio)",
+    porque: "Sem hipertensão conhecida, esse nível pede avaliação hospitalar.",
+    quando: (c) => c.pressaoBanda() === "adulto" && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão 3",
   },
 ];
 

@@ -334,6 +334,8 @@ h2 { font-size: 1.12rem; font-weight: 700; margin: 0 0 8px; }
 .btn-row { display: flex; gap: 9px; margin-top: 18px; }
 .btn-row .btn { flex: 1; }
 .btn-row .btn.grow-2 { flex: 1.6; }
+/* `display:flex` venceria o `display:none` do atributo [hidden]. */
+.btn-row[hidden] { display: none; }
 
 .back-btn {
   display: inline-flex;
@@ -635,8 +637,18 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
 .slide-pane { width: 50%; flex: 0 0 50%; }
 .painel-card { margin-bottom: 0; }
 
+/* Troca de conteúdo DENTRO do painel (medir <-> "não consigo medir" <->
+   pergunta de fatores de alteração): não é um slide de duas colunas como o
+   de cima, só uma pequena entrada lateral a cada reconstrução do corpo. */
+@keyframes painelSlideIn {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: none; }
+}
+.painel-slide-in { animation: painelSlideIn 0.28s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
 @media (prefers-reduced-motion: reduce) {
   .slide-wrap, .slide-track { transition: none; }
+  .painel-slide-in { animation: none; }
 }
 
 /* ------------------------------- Modal ----------------------------------- */
@@ -897,6 +909,116 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
 }
 .pa-campo input:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); border-color: var(--brand); }
 .pa-barra { font-size: 1.5rem; font-weight: 800; color: var(--muted); padding-bottom: 9px; }
+
+/* --------------------- Altura (personagem + régua) ------------------------ */
+
+.altura-readout { text-align: center; margin: 4px 0 2px; line-height: 1; }
+.altura-valor {
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+.altura-un { font-size: 0.95rem; font-weight: 700; color: var(--muted); margin-left: 4px; }
+
+.altura-palco {
+  position: relative;
+  height: 248px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  margin: 4px 0 8px;
+}
+.altura-personagem-wrap {
+  width: auto;
+  max-width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.altura-personagem-wrap svg { height: 100%; width: auto; display: block; }
+
+.altura-chao {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 0;
+  height: 3px;
+  border-radius: var(--r-full);
+  background: linear-gradient(90deg, transparent, var(--border-strong) 18%, var(--border-strong) 82%, transparent);
+}
+
+.altura-regua {
+  position: relative;
+  height: 74px;
+  margin: 6px 0 4px;
+  cursor: grab;
+  touch-action: pan-y;
+  outline: none;
+  border-radius: var(--r-sm);
+}
+.altura-regua:active { cursor: grabbing; }
+.altura-regua:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
+
+.altura-ponteiro {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 2.5px;
+  height: 30px;
+  background: var(--brand);
+  border-radius: var(--r-full);
+  transform: translateX(-50%);
+  z-index: 2;
+  pointer-events: none;
+}
+.altura-ponteiro::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--brand);
+}
+
+.altura-regua-mask {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 16%, black 84%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, black 16%, black 84%, transparent 100%);
+}
+.altura-fita {
+  position: absolute;
+  left: 0;
+  bottom: 18px;
+  height: 30px;
+}
+.altura-marca {
+  position: absolute;
+  bottom: 0;
+  width: 1.5px;
+  height: 10px;
+  background: var(--border-strong);
+  transform: translateX(-50%);
+}
+.altura-marca.media { height: 16px; background: var(--muted); }
+.altura-marca.maior { height: 24px; width: 2px; background: var(--text-soft); }
+.altura-marca span {
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ------------------------------ Itens marcáveis -------------------------- */
 
