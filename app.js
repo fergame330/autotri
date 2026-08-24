@@ -74,6 +74,7 @@ const SYMPTOM_CATEGORIES = [
     items: [
       { id: "dor_peito", label: "Dor no peito", code: [1] },
       { id: "falta_ar", label: "Falta de ar", code: [1] },
+      { id: "cianose", label: "Extremidades da pele ou boca azuladas", code: [1] },
       {
         id: "palpitacao",
         label: "Coração batendo mais forte e/ou mais rápido",
@@ -150,6 +151,24 @@ const SYMPTOM_CATEGORIES = [
         },
       },
       { id: "alteracao_visual", label: "Alteração visual", code: [1] },
+    ],
+  },
+  {
+    title: "Saúde mental",
+    curto: "Saúde mental",
+    icon: "M20.5 12.4c0 4-3.8 7.2-8.5 7.2a10 10 0 0 1-2.6-.3L4.5 21l1.3-3.6A6.9 6.9 0 0 1 3.5 12.4C3.5 8.4 7.3 5.2 12 5.2s8.5 3.2 8.5 7.2Z@@M12 15l-2-2a1.5 1.5 0 0 1 2-2.1 1.5 1.5 0 0 1 2 2.1Z",
+    items: [
+      {
+        id: "ideacao_suicida",
+        label: "Pensamentos de morte ou de tirar a própria vida",
+        sub: {
+          options: [
+            { label: "Tenho tido esses pensamentos", code: [0], cvv: true, caps: true },
+            { label: "Tenho um plano de como fazer", code: [1], cvv: true },
+            { label: "Já tentei recentemente", code: [1, 2], cvv: true },
+          ],
+        },
+      },
     ],
   },
   {
@@ -994,8 +1013,12 @@ const ALT_MAX = 176;
 const ALT_PX_MIN = 92; // altura do personagem, em px, no valor mínimo
 const ALT_PX_MAX = 232; // altura do personagem, em px, no valor máximo
 const ALT_PX_CM = 12; // escala da régua: pixels por centímetro
-const ALT_VIEW_W = 280; // largura fixa da janela visível da régua
-const ALT_PAD = ALT_VIEW_W / 2;
+
+/* A fita começa em `left: 50%` da máscara (ver styles.css) e cada marca fica
+   a (v - ALT_MIN) * ALT_PX_CM da borda dela. Com a fita deslocada de
+   -(valor - ALT_MIN) * ALT_PX_CM, a marca do valor atual cai exatamente em
+   50% — que é onde o ponteiro está. Assim o alinhamento não depende da
+   largura da tela: nada aqui assume um tamanho fixo de janela. */
 
 function alturaLabel(v) {
   if (v === ALT_MIN) return `${ALT_MIN}-`;
@@ -1014,7 +1037,7 @@ function alturaMarcasHtml() {
   for (let v = ALT_MIN; v <= ALT_MAX; v++) {
     const maior = v % 10 === 0;
     const media = !maior && v % 5 === 0;
-    const x = ALT_PAD + (v - ALT_MIN) * ALT_PX_CM;
+    const x = (v - ALT_MIN) * ALT_PX_CM;
     out += `<div class="altura-marca ${maior ? "maior" : media ? "media" : ""}" style="left:${x}px">${
       maior ? `<span>${v}</span>` : ""
     }</div>`;
@@ -1022,31 +1045,27 @@ function alturaMarcasHtml() {
   return out;
 }
 
-/* Ilustração simples: silhueta com calça (menino) ou vestido (menina),
-   nas cores da própria identidade visual do app. */
+/* Pictograma minimalista, de uma cor só: azul para menino, rosa para menina.
+   A cor vem de uma classe no <svg>, para acompanhar o tema claro/escuro. */
 function personagemSvg(genero) {
   const ehMenina = genero === "mulher";
-  const roupaBaixo = ehMenina
-    ? `<path d="M33 118 L26 197 Q50 206 74 197 L67 118 Z" fill="var(--brand)" />`
-    : `<path d="M33 118 L29 197 L47 197 L50 152 L53 197 L71 197 L67 118 Z" fill="var(--brand-strong)" />`;
-  const cabelo = ehMenina
-    ? `<path d="M18 42 Q19 10 50 8 Q81 10 82 42 Q82 60 73 63 Q79 42 50 36 Q21 42 27 63 Q18 60 18 42 Z" fill="#8a5a3d" />`
-    : `<path d="M21 32 Q23 11 50 11 Q77 11 79 32 Q79 24 50 24 Q21 24 21 32 Z" fill="#8a5a3d" />`;
+
+  const corpo = ehMenina
+    ? // vestido trapezoidal + pernas
+      `<path d="M50 54c-10 0-17 5-19 13l-13 51h64l-13-51c-2-8-9-13-19-13z"/>
+       <rect x="34" y="116" width="13" height="82" rx="6.5"/>
+       <rect x="53" y="116" width="13" height="82" rx="6.5"/>`
+    : // tronco com ombros + pernas
+      `<rect x="22" y="54" width="56" height="62" rx="17"/>
+       <rect x="30" y="112" width="16" height="86" rx="8"/>
+       <rect x="54" y="112" width="16" height="86" rx="8"/>`;
 
   return `
     <svg viewBox="0 0 100 210" preserveAspectRatio="xMidYMax meet" role="img"
+         class="figura ${ehMenina ? "menina" : "menino"}"
          aria-label="${ehMenina ? "Menina" : "Menino"}">
-      <rect x="29" y="192" width="18" height="14" rx="5" fill="#3d4652" />
-      <rect x="53" y="192" width="18" height="14" rx="5" fill="#3d4652" />
-      ${roupaBaixo}
-      <rect x="29" y="70" width="42" height="54" rx="15" fill="var(--brand)" />
-      <rect x="14" y="76" width="15" height="46" rx="7.5" fill="#f2b98d" />
-      <rect x="71" y="76" width="15" height="46" rx="7.5" fill="#f2b98d" />
-      <circle cx="50" cy="43" r="27" fill="#f2b98d" />
-      ${cabelo}
-      <circle cx="41" cy="44" r="2.8" fill="#3d4652" />
-      <circle cx="59" cy="44" r="2.8" fill="#3d4652" />
-      <path d="M40 54 Q50 60 60 54" stroke="#3d4652" stroke-width="2.6" fill="none" stroke-linecap="round" />
+      <circle cx="50" cy="30" r="19"/>
+      ${corpo}
     </svg>`;
 }
 
@@ -2185,10 +2204,41 @@ function pedeEncaminhamento() {
 
 /* ------------------------------ Resultado -------------------------------- */
 
+/* Marcou só febre e/ou pressão, e as duas medições deram normais: não há o
+   que avaliar num serviço de saúde agora. Exige medição numérica — quem
+   respondeu "não consigo medir" continua indo para a UBS. */
+function apenasMedicoesNormais() {
+  const marcados = [];
+  SYMPTOM_CATEGORIES.forEach((cat) =>
+    cat.items.forEach((item) => {
+      const st = state.sintomas[item.id];
+      if (st && st.checked) marcados.push(item);
+    })
+  );
+  if (!marcados.length) return false;
+
+  return marcados.every((item) => {
+    const st = state.sintomas[item.id];
+    if (item.id === "febre_hipotermia") {
+      return st.medida != null && classificaTemperatura(st.medida).zona === "normal";
+    }
+    if (item.id === "pressao_arterial") {
+      return (
+        st.pressao != null &&
+        typeof classificaPressao === "function" &&
+        classificaPressao(state) === "normal"
+      );
+    }
+    return false;
+  });
+}
+
 function computeResultado() {
   let hospital = false;
   let upa = false;
   let policia = false;
+  let cvv = false;
+  let caps = false;
   const selecionados = [];
 
   SYMPTOM_CATEGORIES.forEach((cat) =>
@@ -2204,6 +2254,8 @@ function computeResultado() {
         code = opt.code;
         detalhe = opt.label;
         if (opt.policia) policia = true;
+        if (opt.cvv) cvv = true;
+        if (opt.caps) caps = true;
         // Quando houve medição, ela é mais informativa que o rótulo da opção.
         if (item.painel) detalhe = resumoMedicao(item);
       } else {
@@ -2226,12 +2278,21 @@ function computeResultado() {
       ? avaliaSinergias(state, base)
       : { destino: base, samu: false, disparadas: [] };
 
+  // Nada além de medições normais: orienta cuidado em casa, um degrau
+  // abaixo da UBS. Só vale quando nem a tabela nem as sinergias subiram.
+  let destino = sin.destino;
+  if (destino === "ubs" && !sin.samu && !policia && !cvv && apenasMedicoesNormais()) {
+    destino = "casa";
+  }
+
   return {
-    destino: sin.destino,
+    destino,
     samu: sin.samu,
     sinergias: sin.disparadas,
     base,
     policia,
+    cvv,
+    caps,
     selecionados,
   };
 }
@@ -2258,6 +2319,14 @@ const DESTINO = {
     busca: "UBS unidade básica de saúde posto de saúde",
     icon: `<path d="M4.4 10.6 12 4.5l7.6 6.1v9.4H4.4Z"/><path d="M12 12.4v4.2M9.9 14.5h4.2"/>`,
   },
+  casa: {
+    nome: "Cuidado em casa",
+    sub: "As medições deram normais e nenhum outro sintoma foi marcado.",
+    texto:
+      "Por enquanto não há sinal que peça atendimento. Descanse, beba água e observe. Se aparecer qualquer sintoma novo, se as medições mudarem ou se você não se sentir bem, refaça a triagem.",
+    busca: "UBS unidade básica de saúde posto de saúde",
+    icon: `<path d="M4.4 10.6 12 4.5l7.6 6.1v9.4H4.4Z"/><path d="M9.6 20v-5.2h4.8V20"/>`,
+  },
 };
 
 const LABEL_POP = {
@@ -2276,7 +2345,7 @@ const LABEL_SUB = {
 const LABEL_PUERP = { imediato: "Imediato", tardio: "Tardio", remoto: "Remoto" };
 
 function renderResultado() {
-  const { destino, samu, sinergias, base, policia, selecionados } = computeResultado();
+  const { destino, samu, sinergias, base, policia, cvv, caps, selecionados } = computeResultado();
   const info = DESTINO[destino];
 
   const comorbs = [];
@@ -2325,6 +2394,27 @@ function renderResultado() {
     );
   }
 
+  if (cvv) {
+    app.appendChild(
+      h(`
+      <div class="alert-cvv">
+        <h2>Você não está sozinho</h2>
+        <p>O Centro de Valorização da Vida atende de graça, 24 horas por dia, com sigilo. Falar com alguém agora ajuda — e o atendimento de saúde indicado acima continua valendo.</p>
+        <a class="call-btn solid-cvv" href="tel:188">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M6.3 3.8h3.2l1.6 4-2 1.2a11.4 11.4 0 0 0 5.9 5.9l1.2-2 4 1.6v3.2a1.6 1.6 0 0 1-1.7 1.6A16.4 16.4 0 0 1 4.7 5.5a1.6 1.6 0 0 1 1.6-1.7Z"/></svg>
+          CVV — 188
+        </a>
+        <a class="call-btn outline" href="https://cvv.org.br/chat/" target="_blank" rel="noopener">Conversar por chat no site do CVV</a>
+        ${
+          caps
+            ? `<p style="margin-top:14px">Peça também, na UBS, encaminhamento para o CAPS da sua região — é o serviço que faz o acompanhamento continuado em saúde mental.</p>`
+            : ""
+        }
+      </div>
+    `)
+    );
+  }
+
   if (policia) {
     app.appendChild(
       h(`
@@ -2332,7 +2422,12 @@ function renderResultado() {
         <h2>Apoio para violência sexual</h2>
         <p>Você indicou uma relação sexual não consensual. Além do atendimento de saúde, considere acionar a polícia e buscar um hospital em até 72 horas — nesse prazo existem profilaxias disponíveis.</p>
         <a class="call-btn solid-police" href="tel:190">Polícia Militar — 190</a>
-        <a class="call-btn outline" href="tel:180">Central de Atendimento à Mulher — 180</a>
+        ${
+          // O 180 é a Central de Atendimento à Mulher: não se aplica a homens.
+          state.genero === "mulher"
+            ? `<a class="call-btn outline" href="tel:180">Central de Atendimento à Mulher — 180</a>`
+            : ""
+        }
         <a class="call-btn outline" href="tel:100">Disque Direitos Humanos — 100</a>
       </div>
     `)
@@ -2343,11 +2438,21 @@ function renderResultado() {
     h(`
     <div class="card">
       <p class="lede">${info.texto}</p>
-      <a class="link-btn" target="_blank" rel="noopener"
-         href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(info.busca)}">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 10.4c0 5.4-7.5 10.6-7.5 10.6s-7.5-5.2-7.5-10.6a7.5 7.5 0 0 1 15 0Z"/><circle cx="12" cy="10.3" r="2.6"/></svg>
-        Buscar unidade mais próxima
-      </a>
+      ${
+        // Em "cuidado em casa" não há para onde mandar a pessoa agora; o mapa
+        // vira só um caminho secundário, caso ela queira avaliar mesmo assim.
+        destino === "casa"
+          ? `<p class="hint" style="margin-bottom:0">Se preferir uma avaliação mesmo assim, a UBS da sua região é o lugar certo.</p>
+             <a class="link-btn ghost-link" target="_blank" rel="noopener"
+                href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(info.busca)}">
+               Ver UBS próximas
+             </a>`
+          : `<a class="link-btn" target="_blank" rel="noopener"
+                href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(info.busca)}">
+               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 10.4c0 5.4-7.5 10.6-7.5 10.6s-7.5-5.2-7.5-10.6a7.5 7.5 0 0 1 15 0Z"/><circle cx="12" cy="10.3" r="2.6"/></svg>
+               Buscar unidade mais próxima
+             </a>`
+      }
     </div>
   `)
   );

@@ -36,9 +36,17 @@
   --upa-soft: #fdf1dc;
   --ubs: #17743d;
   --ubs-soft: #e2f6e9;
+  --casa: #1d6fb8;
+  --casa-soft: #e3f0fb;
   --police: #3b3ac4;
   --police-soft: #e8e8fc;
   --police-on: #ffffff;
+  --cvv: #7a3ba8;
+  --cvv-soft: #f2e8fa;
+  --cvv-on: #ffffff;
+
+  --fig-menino: #2563eb;
+  --fig-menina: #db2777;
 
   --track: #dbe4ec;
   --shadow-sm: 0 1px 2px rgba(15, 35, 55, .06), 0 1px 3px rgba(15, 35, 55, .05);
@@ -85,9 +93,17 @@
   --upa-soft: #33260c;
   --ubs: #62e08e;
   --ubs-soft: #0d2c1a;
+  --casa: #7cc4ff;
+  --casa-soft: #0d2438;
   --police: #a9aaff;
   --police-soft: #1c1c3d;
   --police-on: #12113a;
+  --cvv: #d5a8f5;
+  --cvv-soft: #241436;
+  --cvv-on: #1d0d2c;
+
+  --fig-menino: #60a5fa;
+  --fig-menina: #f472b6;
 
   --track: #2b3a49;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
@@ -938,6 +954,11 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
 }
 .altura-personagem-wrap svg { height: 100%; width: auto; display: block; }
 
+/* Pictograma de uma cor só, por gênero. */
+.figura { fill: currentColor; }
+.figura.menino { color: var(--fig-menino); }
+.figura.menina { color: var(--fig-menina); }
+
 .altura-chao {
   position: absolute;
   left: 8%;
@@ -992,9 +1013,12 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
   -webkit-mask-image: linear-gradient(to right, transparent 0%, black 16%, black 84%, transparent 100%);
   mask-image: linear-gradient(to right, transparent 0%, black 16%, black 84%, transparent 100%);
 }
+/* A fita nasce no centro da máscara — o mesmo ponto do ponteiro. O
+   deslocamento aplicado em JS traz a marca do valor atual até aqui, então o
+   alinhamento vale para qualquer largura de tela. */
 .altura-fita {
   position: absolute;
-  left: 0;
+  left: 50%;
   bottom: 18px;
   height: 30px;
 }
@@ -1148,6 +1172,7 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
 .verdict.hospital { background: var(--hospital-soft); color: var(--hospital); border-color: color-mix(in srgb, var(--hospital) 22%, transparent); }
 .verdict.upa      { background: var(--upa-soft);      color: var(--upa);      border-color: color-mix(in srgb, var(--upa) 22%, transparent); }
 .verdict.ubs      { background: var(--ubs-soft);      color: var(--ubs);      border-color: color-mix(in srgb, var(--ubs) 22%, transparent); }
+.verdict.casa     { background: var(--casa-soft);     color: var(--casa);     border-color: color-mix(in srgb, var(--casa) 22%, transparent); }
 .verdict.samu     { background: var(--danger-soft);   color: var(--danger);   border-color: color-mix(in srgb, var(--danger) 22%, transparent); }
 
 .call-btn {
@@ -1241,6 +1266,29 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
 }
 .syn-badge.hospital { background: var(--hospital-soft); color: var(--hospital); }
 .syn-badge.samu_hospital { background: var(--danger-soft); color: var(--danger); }
+
+.alert-cvv {
+  background: var(--cvv-soft);
+  color: var(--cvv);
+  border: 1px solid color-mix(in srgb, var(--cvv) 24%, transparent);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  margin-bottom: 14px;
+}
+.alert-cvv h2 { color: inherit; }
+.alert-cvv p { color: inherit; opacity: .92; font-size: 0.9rem; margin: 0 0 4px; }
+.call-btn.solid-cvv { background: var(--cvv); color: var(--cvv-on); }
+.call-btn.solid-cvv:hover { filter: brightness(1.08); }
+
+/* Link secundário: mesma caixa do .link-btn, sem o peso do botão primário. */
+.link-btn.ghost-link {
+  background: transparent;
+  color: var(--text-soft);
+  border: 1.5px solid var(--border-strong);
+  box-shadow: none;
+  font-size: 0.9rem;
+}
+.link-btn.ghost-link:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); filter: none; }
 
 .alert-police {
   background: var(--police-soft);
