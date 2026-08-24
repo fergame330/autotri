@@ -12,6 +12,8 @@
 const SYMPTOM_CATEGORIES = [
   {
     title: "Cardiovascular / Respiratório",
+    curto: "Cardio / Resp.",
+    icon: "M12 20.3 4.9 13.2a4.6 4.6 0 0 1 6.5-6.5l.6.6.6-.6a4.6 4.6 0 0 1 6.5 6.5Z",
     items: [
       { id: "dor_peito", label: "Dor no peito", code: [1] },
       { id: "falta_ar", label: "Falta de ar", code: [1] },
@@ -53,6 +55,8 @@ const SYMPTOM_CATEGORIES = [
   },
   {
     title: "Neurológico",
+    curto: "Neuro",
+    icon: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Z@@M13 7.4 9.7 12.5h3.2l-1 4.1",
     items: [
       {
         id: "dor_cabeca",
@@ -93,6 +97,8 @@ const SYMPTOM_CATEGORIES = [
   },
   {
     title: "Gastrointestinal",
+    curto: "Gastro",
+    icon: "M8.2 4.4c0 3 .8 4 .8 6.4 0 2.9-2.3 3.4-2.3 5.4a3 3 0 0 0 5.9.6c.5-2 2-2.5 3.4-3.1 2-.9 3.2-2.4 3.2-4.6a6 6 0 0 0-11-4.7Z",
     items: [
       {
         id: "dor_barriga",
@@ -154,6 +160,8 @@ const SYMPTOM_CATEGORIES = [
   },
   {
     title: "Geniturinário",
+    curto: "Geniturinário",
+    icon: "M12 3.4s5.4 5.6 5.4 9.2a5.4 5.4 0 0 1-10.8 0C6.6 9 12 3.4 12 3.4Z",
     items: [
       { id: "dor_urinar", label: "Dor ao urinar", code: [0] },
       {
@@ -195,6 +203,8 @@ const SYMPTOM_CATEGORIES = [
   },
   {
     title: "Musculoesquelético / Trauma",
+    curto: "Trauma",
+    icon: "M4.6 14.2 9.8 19.4a3.7 3.7 0 0 0 5.2 0l4.4-4.4a3.7 3.7 0 0 0 0-5.2L14.2 4.6a3.7 3.7 0 0 0-5.2 0L4.6 9a3.7 3.7 0 0 0 0 5.2Z@@M9 9l6 6",
     items: [
       {
         id: "batida",
@@ -234,6 +244,8 @@ const SYMPTOM_CATEGORIES = [
   },
   {
     title: "Dermatológico",
+    curto: "Pele",
+    icon: "M12 3.5 3.5 8 12 12.5 20.5 8Z@@M3.6 12.2 12 16.6l8.4-4.4@@M3.6 16.1 12 20.5l8.4-4.4",
     items: [
       {
         id: "ferida",
@@ -274,6 +286,8 @@ const SYMPTOM_CATEGORIES = [
   },
   {
     title: "Geral / Sistêmico",
+    curto: "Geral",
+    icon: "M14.1 14.7V5.5a2.1 2.1 0 1 0-4.2 0v9.2a4 4 0 1 0 4.2 0Z",
     items: [
       {
         id: "febre_hipotermia",
@@ -427,8 +441,10 @@ function freshState() {
     lactante: "nao",
     comorbidades: {}, // id -> { checked, extraValue }
     sintomas: {}, // id -> { checked, subIndex }
-    // Acordeão: só a primeira seção começa aberta em cada tela.
-    aberto: { comorb: new Set([0]), sint: new Set([0]) },
+    // Acordeão do histórico de saúde: só a primeira seção começa aberta.
+    aberto: { comorb: new Set([0]) },
+    // Sintomas são percorridos em partes, uma por sistema do corpo.
+    sintomaParte: 0,
   };
 }
 
@@ -461,16 +477,27 @@ function el(html) {
   return h(html).firstElementChild;
 }
 
+/* O histórico guarda passo + parte dos sintomas, para que "Voltar"
+   percorra as partes uma a uma antes de sair da etapa. */
 function go(step) {
-  history_.push(state.step);
+  history_.push({ step: state.step, parte: state.sintomaParte });
   state.step = step;
+  render();
+  window.scrollTo(0, 0);
+}
+
+function irParaParte(i) {
+  history_.push({ step: state.step, parte: state.sintomaParte });
+  state.sintomaParte = i;
   render();
   window.scrollTo(0, 0);
 }
 
 function back() {
   if (!history_.length) return;
-  state.step = history_.pop();
+  const anterior = history_.pop();
+  state.step = anterior.step;
+  state.sintomaParte = anterior.parte;
   render();
   window.scrollTo(0, 0);
 }
@@ -493,9 +520,17 @@ const TOTAL_ETAPAS = 5;
 function progressHtml() {
   const meta = STEP_META[state.step];
   if (!meta) return "";
+
+  // Na etapa de sintomas a barra avança conforme as partes percorridas.
+  let pct = meta.pct;
+  if (state.step === "sintomas") {
+    const total = SYMPTOM_CATEGORIES.length;
+    pct = 76 + ((state.sintomaParte + 1) / total) * 22;
+  }
+
   return `
     <div class="progress">
-      <div class="progress-track"><div class="progress-fill" style="width:${meta.pct}%"></div></div>
+      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
       <div class="progress-step">Etapa ${meta.n} de ${TOTAL_ETAPAS}</div>
     </div>`;
 }
@@ -1025,7 +1060,10 @@ function trocaItem(item, kind, categories) {
   const novo = el(itemHtml(item, kind));
   antigo.replaceWith(novo);
   ligaItem(novo, item, kind, categories);
-  atualizaSecao(categories, kind, secEl);
+
+  // Histórico de saúde usa acordeão; sintomas usam partes com trilha de sistemas.
+  if (secEl) atualizaSecao(categories, kind, secEl);
+  else atualizaTrilha();
 }
 
 function ligaItem(node, item, kind, categories) {
@@ -1099,40 +1137,136 @@ function renderComorbidades() {
   wireBack();
 }
 
-/* ------------------------------- 5. Sintomas ----------------------------- */
+/* --------------- 5. Sintomas — uma parte por sistema do corpo ------------ */
+
+function totalMarcados() {
+  return Object.values(state.sintomas).filter((s) => s.checked).length;
+}
+
+function iconeSistema(cat, tamanho) {
+  const paths = cat.icon
+    .split("@@")
+    .map((d) => `<path d="${d}"/>`)
+    .join("");
+  return `<svg viewBox="0 0 24 24" width="${tamanho}" height="${tamanho}" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+}
+
+/* Trilha de sistemas: mostra todas as partes, permite pular entre elas
+   e indica quantos sintomas já foram marcados em cada uma. */
+function trilhaHtml() {
+  return `<div class="trilha" id="trilha">${SYMPTOM_CATEGORIES.map((cat, i) => {
+    const n = contaMarcados(cat, "sint");
+    return `
+      <button class="trilha-item ${i === state.sintomaParte ? "atual" : ""} ${n ? "marcado" : ""}"
+              type="button" data-parte="${i}" aria-current="${i === state.sintomaParte}">
+        ${iconeSistema(cat, 16)}
+        <span class="trilha-nome">${cat.curto}</span>
+        ${n ? `<span class="trilha-count">${n}</span>` : ""}
+      </button>`;
+  }).join("")}</div>`;
+}
+
+/* Recalcula a trilha e o rodapé sem redesenhar a parte inteira. */
+function atualizaTrilha() {
+  const trilha = app.querySelector("#trilha");
+  if (trilha) {
+    const nova = el(trilhaHtml());
+    trilha.replaceWith(nova);
+    ligaTrilha();
+  }
+  const contador = app.querySelector("#contador-sintomas");
+  if (contador) contador.textContent = textoContador();
+}
+
+function textoContador() {
+  const n = totalMarcados();
+  if (!n) return "Nenhum sintoma marcado até aqui";
+  return n === 1 ? "1 sintoma marcado até aqui" : `${n} sintomas marcados até aqui`;
+}
+
+function ligaTrilha() {
+  app.querySelectorAll("[data-parte]").forEach((b) => {
+    b.onclick = () => {
+      const i = Number(b.dataset.parte);
+      if (i !== state.sintomaParte) irParaParte(i);
+    };
+  });
+}
 
 function renderSintomas() {
+  const total = SYMPTOM_CATEGORIES.length;
+  const i = state.sintomaParte;
+  const cat = SYMPTOM_CATEGORIES[i];
+  const ultima = i === total - 1;
+
   app.appendChild(
     h(`
     ${progressHtml()}
+    ${trilhaHtml()}
     <div class="card">
       ${backHtml()}
-      <span class="eyebrow">Sintomas</span>
-      <p class="question">Marque os sintomas que a pessoa apresenta</p>
-      <p class="hint">Selecione todos que se aplicam. Alguns abrem uma pergunta extra sobre a gravidade.</p>
-      ${accordionHtml(SYMPTOM_CATEGORIES, "sint")}
+      <span class="eyebrow">Sintomas · parte ${i + 1} de ${total}</span>
+
+      <div class="sistema-head">
+        <span class="sistema-icone">${iconeSistema(cat, 24)}</span>
+        <h2 class="sistema-nome">${cat.title}</h2>
+      </div>
+      <p class="hint">Marque o que a pessoa apresenta neste sistema. Se não houver nada, siga em frente.</p>
+
+      <div class="item-list">
+        ${cat.items.map((item) => itemHtml(item, "sint")).join("")}
+      </div>
+
       <div class="error-text" id="erro-sintomas" hidden>
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.8v4.6M12 16.2h.01"/></svg>
-        Selecione pelo menos um sintoma para continuar.
+        Selecione pelo menos um sintoma antes de ver o encaminhamento.
       </div>
+
+      <div class="parte-rodape">
+        <span id="contador-sintomas">${textoContador()}</span>
+      </div>
+
       <div class="btn-row">
-        <button class="btn primary" type="button" data-action="finalizar">Ver encaminhamento</button>
+        ${
+          i > 0
+            ? `<button class="btn subtle" type="button" data-action="anterior">Anterior</button>`
+            : ""
+        }
+        <button class="btn primary grow-2" type="button" data-action="${ultima ? "finalizar" : "proximo"}">
+          ${ultima ? "Ver encaminhamento" : "Próximo sistema"}
+        </button>
       </div>
     </div>
   `)
   );
-  ligaAcordeao(SYMPTOM_CATEGORIES, "sint");
 
-  app.querySelector('[data-action="finalizar"]').onclick = () => {
-    const algum = Object.values(state.sintomas).some((s) => s.checked);
-    if (!algum) {
-      const erro = app.querySelector("#erro-sintomas");
-      erro.hidden = false;
-      erro.scrollIntoView({ block: "center", behavior: "smooth" });
-      return;
-    }
-    go("resultado");
-  };
+  // Liga apenas os itens da parte visível.
+  cat.items.forEach((item) => {
+    const node = app.querySelector(`.check-item[data-item="${item.id}"]`);
+    if (node) ligaItem(node, item, "sint", SYMPTOM_CATEGORIES);
+  });
+  ligaTrilha();
+
+  const anterior = app.querySelector('[data-action="anterior"]');
+  if (anterior) anterior.onclick = () => irParaParte(i - 1);
+
+  const proximo = app.querySelector('[data-action="proximo"]');
+  if (proximo) proximo.onclick = () => irParaParte(i + 1);
+
+  const finalizar = app.querySelector('[data-action="finalizar"]');
+  if (finalizar) {
+    finalizar.onclick = () => {
+      if (!totalMarcados()) {
+        const erro = app.querySelector("#erro-sintomas");
+        erro.hidden = false;
+        erro.scrollIntoView({ block: "center", behavior: "smooth" });
+        return;
+      }
+      go("resultado");
+    };
+  }
+
   wireBack();
 }
 
