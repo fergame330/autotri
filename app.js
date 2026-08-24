@@ -11,6 +11,63 @@
 
 const SYMPTOM_CATEGORIES = [
   {
+    title: "Geral / Sistêmico",
+    curto: "Geral",
+    icon: "M14.1 14.7V5.5a2.1 2.1 0 1 0-4.2 0v9.2a4 4 0 1 0 4.2 0Z",
+    items: [
+      {
+        id: "febre_hipotermia",
+        label: "Febre e/ou hipotermia",
+        painel: "febre",
+        sub: {
+          options: [
+            { label: "Febre baixa", code: [0] },
+            { label: "Febre moderada", code: [1] },
+            { label: "Febre muito alta", code: [1, 2] },
+            { label: "Hipotermia", code: [1] },
+            { label: "Não sei", code: [1] },
+          ],
+        },
+      },
+      {
+        id: "pressao_arterial",
+        label: "Pressão alta / baixa",
+        painel: "pressao",
+        sub: {
+          options: [
+            { label: "Está alta", code: [0] },
+            { label: "Está baixa", code: [0] },
+            { label: "Não sei", code: [0] },
+          ],
+        },
+      },
+      { id: "cansaco_muscular", label: "Cansaço muscular", code: [0] },
+      { id: "perda_peso", label: "Perda de peso não intencional", code: [0] },
+      {
+        id: "dor_garganta",
+        label: "Dor de garganta",
+        sub: {
+          options: [
+            { label: "Garganta não obstruída", code: [0] },
+            { label: "Garganta obstruída", code: [1, 2] },
+            { label: "Não sei", code: [1, 2] },
+          ],
+        },
+      },
+      { id: "alergia", label: "Alergia", code: [0] },
+      {
+        id: "suando",
+        label: "Suando de mais e/ou suando frio",
+        sub: {
+          options: [
+            { label: "É frequente", code: [0] },
+            { label: "Aconteceu do nada", code: [1] },
+          ],
+        },
+      },
+    ],
+  },
+  {
     title: "Cardiovascular / Respiratório",
     curto: "Cardio / Resp.",
     icon: "M12 20.3 4.9 13.2a4.6 4.6 0 0 1 6.5-6.5l.6.6.6-.6a4.6 4.6 0 0 1 6.5 6.5Z",
@@ -284,50 +341,6 @@ const SYMPTOM_CATEGORIES = [
       },
     ],
   },
-  {
-    title: "Geral / Sistêmico",
-    curto: "Geral",
-    icon: "M14.1 14.7V5.5a2.1 2.1 0 1 0-4.2 0v9.2a4 4 0 1 0 4.2 0Z",
-    items: [
-      {
-        id: "febre_hipotermia",
-        label: "Febre e/ou hipotermia",
-        sub: {
-          options: [
-            { label: "Febre baixa", code: [0] },
-            { label: "Febre moderada", code: [1] },
-            { label: "Febre muito alta", code: [1, 2] },
-            { label: "Hipotermia", code: [1] },
-            { label: "Não sei", code: [1] },
-          ],
-        },
-      },
-      { id: "cansaco_muscular", label: "Cansaço muscular", code: [0] },
-      { id: "perda_peso", label: "Perda de peso não intencional", code: [0] },
-      {
-        id: "dor_garganta",
-        label: "Dor de garganta",
-        sub: {
-          options: [
-            { label: "Garganta não obstruída", code: [0] },
-            { label: "Garganta obstruída", code: [1, 2] },
-            { label: "Não sei", code: [1, 2] },
-          ],
-        },
-      },
-      { id: "alergia", label: "Alergia", code: [0] },
-      {
-        id: "suando",
-        label: "Suando de mais e/ou suando frio",
-        sub: {
-          options: [
-            { label: "É frequente", code: [0] },
-            { label: "Aconteceu do nada", code: [1] },
-          ],
-        },
-      },
-    ],
-  },
 ];
 
 const COMORBIDITY_CATEGORIES = [
@@ -445,6 +458,8 @@ function freshState() {
     aberto: { comorb: new Set([0]) },
     // Sintomas são percorridos em partes, uma por sistema do corpo.
     sintomaParte: 0,
+    // Partes já abertas, para avisar quem pede o encaminhamento antes do fim.
+    partesVistas: new Set([0]),
   };
 }
 
@@ -489,6 +504,7 @@ function go(step) {
 function irParaParte(i) {
   history_.push({ step: state.step, parte: state.sintomaParte });
   state.sintomaParte = i;
+  state.partesVistas.add(i);
   render();
   window.scrollTo(0, 0);
 }
@@ -964,7 +980,14 @@ function itemHtml(item, kind) {
   const checked = !!(st && st.checked);
   let extra = "";
 
-  if (checked && kind === "sint" && item.sub) {
+  // Itens com painel (febre, pressão) mostram a medição e um atalho para editá-la.
+  if (checked && kind === "sint" && item.painel) {
+    extra = `
+      <div class="medicao">
+        <span class="medicao-valor">${resumoMedicao(item)}</span>
+        <button class="btn-mini" type="button" data-abrir="${item.id}">Alterar</button>
+      </div>`;
+  } else if (checked && kind === "sint" && item.sub) {
     extra = `
       <div class="follow-up">
         <div class="follow-up-label">Qual descreve melhor?</div>
@@ -1076,9 +1099,18 @@ function ligaItem(node, item, kind, categories) {
     if (!cb.checked) {
       store[item.id].subIndex = null;
       store[item.id].extraValue = null;
+      store[item.id].medida = null;
+      store[item.id].pressao = null;
+      store[item.id].modo = "medir";
     }
     trocaItem(item, kind, categories);
+
+    // Marcar febre ou pressão já abre o painel de medição.
+    if (cb.checked && item.painel) abrePainel(item);
   };
+
+  const abrir = node.querySelector("[data-abrir]");
+  if (abrir) abrir.onclick = () => abrePainel(item);
 
   node.querySelectorAll("[data-sub]").forEach((r) => {
     r.onchange = () => {
@@ -1135,6 +1167,514 @@ function renderComorbidades() {
   ligaAcordeao(COMORBIDITY_CATEGORIES, "comorb");
   app.querySelector('[data-action="continuar"]').onclick = () => go("sintomas");
   wireBack();
+}
+
+/* ========================= Modal de confirmação ========================== */
+
+function abreModal({ titulo, texto, confirmar, cancelar, aoConfirmar }) {
+  const fundo = el(`
+    <div class="modal-fundo" role="dialog" aria-modal="true">
+      <div class="modal">
+        <h2>${titulo}</h2>
+        <p>${texto}</p>
+        <div class="btn-row">
+          <button class="btn subtle" type="button" data-m="cancelar">${cancelar}</button>
+          <button class="btn primary grow-2" type="button" data-m="ok">${confirmar}</button>
+        </div>
+      </div>
+    </div>`);
+
+  const fecha = () => {
+    fundo.classList.remove("aberto");
+    setTimeout(() => fundo.remove(), 200);
+  };
+
+  fundo.querySelector('[data-m="cancelar"]').onclick = fecha;
+  fundo.querySelector('[data-m="ok"]').onclick = () => {
+    fecha();
+    aoConfirmar();
+  };
+  fundo.onclick = (e) => {
+    if (e.target === fundo) fecha();
+  };
+
+  document.body.appendChild(fundo);
+  requestAnimationFrame(() => fundo.classList.add("aberto"));
+  fundo.querySelector('[data-m="ok"]').focus();
+}
+
+/* ===================== Painéis deslizantes de medição ==================== */
+/* A caixa principal desliza para a esquerda e o painel entra pela direita. */
+
+const PAINEIS = {
+  febre: { titulo: "Temperatura", montaHtml: painelFebreHtml, liga: ligaPainelFebre },
+  pressao: { titulo: "Pressão arterial", montaHtml: painelPressaoHtml, liga: ligaPainelPressao },
+};
+
+function estadoItem(id) {
+  if (!state.sintomas[id]) {
+    state.sintomas[id] = { checked: true, subIndex: null, medida: null, pressao: null, modo: "medir" };
+  }
+  const st = state.sintomas[id];
+  if (st.modo === undefined) st.modo = "medir";
+  return st;
+}
+
+/* Anima a altura entre dois valores e devolve o contêiner a `auto`.
+   Em repouso a altura precisa ser automática: marcar um sintoma expande a
+   sub-pergunta, e uma altura fixa em pixels cortaria o resto do cartão. */
+const DUR_SLIDE = 360;
+
+function animaAltura(de, para, aoFim) {
+  const wrap = app.querySelector("#slide-wrap");
+  if (!wrap) return;
+  clearTimeout(wrap._timerAltura);
+  wrap.style.height = de + "px";
+  void wrap.offsetHeight; // força o reflow para a transição sair do valor certo
+  wrap.style.height = para + "px";
+  wrap._timerAltura = setTimeout(() => {
+    wrap.style.height = "";
+    if (aoFim) aoFim();
+  }, DUR_SLIDE);
+}
+
+function abrePainel(item) {
+  const cfg = PAINEIS[item.painel];
+  if (!cfg) return;
+  state.painel = item.id;
+
+  const wrap = app.querySelector("#slide-wrap");
+  const pane = app.querySelector("#pane-painel");
+  pane.innerHTML = "";
+  pane.appendChild(
+    h(`
+    <div class="card painel-card">
+      <button class="back-btn" type="button" data-p="voltar">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg>
+        Voltar aos sintomas
+      </button>
+      <span class="eyebrow">${cfg.titulo}</span>
+      <div id="painel-corpo">${cfg.montaHtml(item)}</div>
+      <div class="btn-row">
+        <button class="btn primary" type="button" data-p="pronto">Pronto</button>
+      </div>
+    </div>`)
+  );
+
+  const concluir = () => fechaPainel(item);
+  pane.querySelector('[data-p="voltar"]').onclick = concluir;
+  pane.querySelector('[data-p="pronto"]').onclick = concluir;
+  cfg.liga(item);
+
+  const de = app.querySelector("#pane-main").offsetHeight;
+  const para = pane.offsetHeight;
+  wrap.classList.add("aberto");
+  animaAltura(de, para);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function fechaPainel(item) {
+  const wrap = app.querySelector("#slide-wrap");
+  if (!wrap) return;
+  state.painel = null;
+
+  const de = app.querySelector("#pane-painel").offsetHeight;
+  wrap.classList.remove("aberto");
+  trocaItem(item, "sint", SYMPTOM_CATEGORIES);
+  const para = app.querySelector("#pane-main").offsetHeight;
+
+  animaAltura(de, para, () => {
+    const pane = app.querySelector("#pane-painel");
+    if (pane && !state.painel) pane.innerHTML = "";
+  });
+}
+
+/* Alterna entre medir e escolher uma opção descritiva. */
+function trocaModoPainel(item, modo) {
+  const st = estadoItem(item.id);
+  const pane = app.querySelector("#pane-painel");
+  const de = pane.offsetHeight;
+
+  st.modo = modo;
+  const corpo = app.querySelector("#painel-corpo");
+  corpo.innerHTML = PAINEIS[item.painel].montaHtml(item);
+  PAINEIS[item.painel].liga(item);
+
+  animaAltura(de, pane.offsetHeight);
+}
+
+/* Lista de opções usada quando a pessoa não consegue medir. */
+function opcoesPainelHtml(item, dica) {
+  const st = estadoItem(item.id);
+  return `
+    <p class="hint">${dica}</p>
+    <div class="radio-list radio-cards">
+      ${item.sub.options
+        .map(
+          (o, i) => `
+        <label class="radio-opt radio-card">
+          <input type="radio" name="op-${item.id}" data-op="${i}" ${st.subIndex === i ? "checked" : ""} />
+          <span>${o.label}</span>
+        </label>`
+        )
+        .join("")}
+    </div>
+    <button class="btn subtle" type="button" data-modo="medir">Voltar a medir</button>`;
+}
+
+function ligaOpcoesPainel(item) {
+  app.querySelectorAll("[data-op]").forEach((r) => {
+    r.onchange = () => {
+      const st = estadoItem(item.id);
+      st.subIndex = Number(r.dataset.op);
+      st.medida = null;
+      st.pressao = null;
+    };
+  });
+  const voltar = app.querySelector('[data-modo="medir"]');
+  if (voltar) voltar.onclick = () => trocaModoPainel(item, "medir");
+}
+
+/* ------------------------- Painel: termômetro ---------------------------- */
+
+const TEMP_MIN = 340; // décimos de grau, para evitar passo fracionário
+const TEMP_MAX = 440;
+
+/* Classifica a temperatura em uma das opções já existentes do sintoma. */
+function classificaTemperatura(t) {
+  if (t < 35.0) return { indice: 3, rotulo: "Hipotermia", zona: "frio" };
+  if (t < 37.8) return { indice: 0, rotulo: "Temperatura normal", zona: "normal" };
+  if (t < 38.6) return { indice: 0, rotulo: "Febre baixa", zona: "baixa" };
+  if (t < 39.6) return { indice: 1, rotulo: "Febre moderada", zona: "moderada" };
+  return { indice: 2, rotulo: "Febre muito alta", zona: "alta" };
+}
+
+function painelFebreHtml(item) {
+  const st = estadoItem(item.id);
+  if (st.modo === "opcoes") {
+    return opcoesPainelHtml(item, "Escolha o que mais se aproxima do que a pessoa sente.");
+  }
+
+  const dec = st.medida != null ? Math.round(st.medida * 10) : 380;
+  const t = dec / 10;
+  const cls = classificaTemperatura(t);
+  const pct = ((dec - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * 100;
+
+  const marcas = [];
+  for (let v = TEMP_MIN; v <= TEMP_MAX; v += 10) {
+    const p = ((v - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * 100;
+    marcas.push(
+      `<div class="termo-marca" style="bottom:${p}%"><span>${v === TEMP_MAX ? "44+" : v / 10}</span></div>`
+    );
+  }
+
+  return `
+    <p class="hint">Arraste o termômetro até a temperatura medida.</p>
+    <div class="termo-leitura">
+      <span class="termo-valor" id="termo-valor">${t.toFixed(1)}</span><span class="termo-un">°C</span>
+      <div class="termo-rotulo zona-${cls.zona}" id="termo-rotulo">${cls.rotulo}</div>
+    </div>
+
+    <div class="termo" id="termo">
+      <div class="termo-marcas">${marcas.join("")}</div>
+      <div class="termo-corpo">
+        <div class="termo-tubo">
+          <div class="termo-merc zona-${cls.zona}" id="termo-merc" style="height:${pct}%"></div>
+        </div>
+        <div class="termo-bulbo zona-${cls.zona}" id="termo-bulbo"></div>
+      </div>
+      <input type="range" id="termo-range" class="termo-range"
+             min="${TEMP_MIN}" max="${TEMP_MAX}" step="1" value="${dec}"
+             aria-label="Temperatura em graus Celsius" />
+    </div>
+
+    <button class="btn subtle" type="button" data-modo="opcoes">Não consigo medir</button>`;
+}
+
+function ligaPainelFebre(item) {
+  const st = estadoItem(item.id);
+
+  if (st.modo === "opcoes") {
+    ligaOpcoesPainel(item);
+    return;
+  }
+
+  const range = app.querySelector("#termo-range");
+  const valor = app.querySelector("#termo-valor");
+  const rotulo = app.querySelector("#termo-rotulo");
+  const merc = app.querySelector("#termo-merc");
+  const bulbo = app.querySelector("#termo-bulbo");
+
+  const aplica = () => {
+    const dec = Number(range.value);
+    const t = dec / 10;
+    const cls = classificaTemperatura(t);
+    const pct = ((dec - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * 100;
+
+    valor.textContent = t.toFixed(1);
+    rotulo.textContent = cls.rotulo;
+    rotulo.className = "termo-rotulo zona-" + cls.zona;
+    merc.style.height = pct + "%";
+    merc.className = "termo-merc zona-" + cls.zona;
+    bulbo.className = "termo-bulbo zona-" + cls.zona;
+
+    st.medida = t;
+    st.subIndex = cls.indice;
+  };
+
+  range.addEventListener("input", aplica);
+  aplica(); // grava já a leitura inicial
+
+  app.querySelector('[data-modo="opcoes"]').onclick = () => trocaModoPainel(item, "opcoes");
+}
+
+/* --------------------- Painel: manômetro (pressão) ----------------------- */
+
+const PA_MIN = 0;
+const PA_MAX = 300;
+const PA_PASSO = 5;
+const PA_CX = 140;
+const PA_CY = 140;
+const PA_R_ARCO = 106;
+const PA_ANG = 270; // varredura total do mostrador, em graus
+
+function paAngulo(v) {
+  return -PA_ANG / 2 + ((v - PA_MIN) / (PA_MAX - PA_MIN)) * PA_ANG;
+}
+
+function paPonto(v, raio) {
+  const a = (paAngulo(v) * Math.PI) / 180;
+  return [PA_CX + raio * Math.sin(a), PA_CY - raio * Math.cos(a)];
+}
+
+function paArco(de, ate, raio) {
+  if (ate - de < 0.01) return "";
+  const [x0, y0] = paPonto(de, raio);
+  const [x1, y1] = paPonto(ate, raio);
+  const grande = ((ate - de) / (PA_MAX - PA_MIN)) * PA_ANG > 180 ? 1 : 0;
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${raio} ${raio} 0 ${grande} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+
+/* Zonas do mostrador: verde até 120, amarelo até 180, vermelho acima. */
+const PA_ZONAS = [
+  { de: 0, ate: 120, cor: "verde" },
+  { de: 120, ate: 180, cor: "amarelo" },
+  { de: 180, ate: 300, cor: "vermelho" },
+];
+
+/* Só o trecho entre as duas bolinhas fica colorido, recortado por zona. */
+function paSegmentosHtml(min, max) {
+  return PA_ZONAS.map((z) => {
+    const de = Math.max(z.de, min);
+    const ate = Math.min(z.ate, max);
+    const d = ate > de ? paArco(de, ate, PA_R_ARCO) : "";
+    return `<path class="pa-seg pa-${z.cor}" d="${d}" />`;
+  }).join("");
+}
+
+function paMarcasHtml() {
+  let out = "";
+  for (let v = PA_MIN; v <= PA_MAX; v += PA_PASSO) {
+    const maior = v % 20 === 0;
+    const r1 = PA_R_ARCO + 9;
+    const r2 = r1 + (maior ? 10 : 5);
+    const [x1, y1] = paPonto(v, r1);
+    const [x2, y2] = paPonto(v, r2);
+    out += `<line class="pa-marca ${maior ? "maior" : ""}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
+    if (v % 50 === 0) {
+      const [xt, yt] = paPonto(v, r2 + 13);
+      out += `<text class="pa-num" x="${xt.toFixed(1)}" y="${yt.toFixed(1)}">${v}</text>`;
+    }
+  }
+  return out;
+}
+
+function painelPressaoHtml(item) {
+  const st = estadoItem(item.id);
+  if (st.modo === "opcoes") {
+    return opcoesPainelHtml(item, "Escolha o que mais se aproxima do que você sabe.");
+  }
+
+  // Começa com uma bolinha no 0 e a outra no 300.
+  const pa = st.pressao || { min: PA_MIN, max: PA_MAX };
+  const [xmin, ymin] = paPonto(pa.min, PA_R_ARCO);
+  const [xmax, ymax] = paPonto(pa.max, PA_R_ARCO);
+
+  return `
+    <p class="hint">Arraste as duas bolinhas no mostrador ou escreva os valores abaixo.</p>
+
+    <div class="pa-wrap">
+      <!-- viewBox folgado nas laterais: os rótulos 50 e 250 ficam nas pontas. -->
+      <svg id="pa-svg" viewBox="-16 -6 312 300" class="pa-svg" role="group" aria-label="Mostrador de pressão arterial">
+        <path class="pa-trilho" d="${paArco(PA_MIN, PA_MAX, PA_R_ARCO)}" />
+        <g class="pa-marcas">${paMarcasHtml()}</g>
+        <g id="pa-segs">${paSegmentosHtml(pa.min, pa.max)}</g>
+        <circle id="pa-h-min" class="pa-bolinha min" cx="${xmin.toFixed(2)}" cy="${ymin.toFixed(2)}" r="13"
+                tabindex="0" role="slider" aria-label="Pressão mínima"
+                aria-valuemin="${PA_MIN}" aria-valuemax="${PA_MAX}" aria-valuenow="${pa.min}" />
+        <circle id="pa-h-max" class="pa-bolinha max" cx="${xmax.toFixed(2)}" cy="${ymax.toFixed(2)}" r="13"
+                tabindex="0" role="slider" aria-label="Pressão máxima"
+                aria-valuemin="${PA_MIN}" aria-valuemax="${PA_MAX}" aria-valuenow="${pa.max}" />
+        <text id="pa-leitura" class="pa-leitura" x="140" y="150">${pa.max} / ${pa.min}</text>
+        <text class="pa-leitura-un" x="140" y="172">mmHg</text>
+      </svg>
+    </div>
+
+    <div class="pa-campos">
+      <label class="pa-campo">
+        <span class="pa-campo-rot">Máxima (sistólica)</span>
+        <input type="number" id="pa-in-max" min="${PA_MIN}" max="${PA_MAX}" step="1" inputmode="numeric" value="${pa.max}" />
+      </label>
+      <span class="pa-barra">/</span>
+      <label class="pa-campo">
+        <span class="pa-campo-rot">Mínima (diastólica)</span>
+        <input type="number" id="pa-in-min" min="${PA_MIN}" max="${PA_MAX}" step="1" inputmode="numeric" value="${pa.min}" />
+      </label>
+    </div>
+
+    <button class="btn subtle" type="button" data-modo="opcoes">Não consigo medir</button>`;
+}
+
+function ligaPainelPressao(item) {
+  const st = estadoItem(item.id);
+
+  if (st.modo === "opcoes") {
+    ligaOpcoesPainel(item);
+    return;
+  }
+
+  if (!st.pressao) st.pressao = { min: PA_MIN, max: PA_MAX };
+  const pa = st.pressao;
+
+  const svg = app.querySelector("#pa-svg");
+  const segs = app.querySelector("#pa-segs");
+  const hMin = app.querySelector("#pa-h-min");
+  const hMax = app.querySelector("#pa-h-max");
+  const leitura = app.querySelector("#pa-leitura");
+  const inMin = app.querySelector("#pa-in-min");
+  const inMax = app.querySelector("#pa-in-max");
+
+  const limita = (v) => Math.min(PA_MAX, Math.max(PA_MIN, v));
+
+  // `origem` diz quem disparou, para não sobrescrever o campo sendo digitado.
+  const redesenha = (origem) => {
+    const [xa, ya] = paPonto(pa.min, PA_R_ARCO);
+    const [xb, yb] = paPonto(pa.max, PA_R_ARCO);
+    hMin.setAttribute("cx", xa.toFixed(2));
+    hMin.setAttribute("cy", ya.toFixed(2));
+    hMin.setAttribute("aria-valuenow", pa.min);
+    hMax.setAttribute("cx", xb.toFixed(2));
+    hMax.setAttribute("cy", yb.toFixed(2));
+    hMax.setAttribute("aria-valuenow", pa.max);
+    segs.innerHTML = paSegmentosHtml(pa.min, pa.max);
+    leitura.textContent = `${pa.max} / ${pa.min}`;
+    if (origem !== "campo-min") inMin.value = pa.min;
+    if (origem !== "campo-max") inMax.value = pa.max;
+    st.subIndex = null; // valor medido tem prioridade sobre a opção descritiva
+  };
+
+  /* Converte a posição do ponteiro em um valor do mostrador.
+     A matriz do próprio SVG cuida do viewBox e do preserveAspectRatio. */
+  const valorDoEvento = (ev) => {
+    const p = svg.createSVGPoint();
+    p.x = ev.clientX;
+    p.y = ev.clientY;
+    const loc = p.matrixTransform(svg.getScreenCTM().inverse());
+    const x = loc.x - PA_CX;
+    const y = loc.y - PA_CY;
+    let ang = (Math.atan2(x, -y) * 180) / Math.PI; // 0 = 12h, cresce no sentido horário
+    ang = Math.max(-PA_ANG / 2, Math.min(PA_ANG / 2, ang));
+    const v = ((ang + PA_ANG / 2) / PA_ANG) * (PA_MAX - PA_MIN) + PA_MIN;
+    return limita(Math.round(v / PA_PASSO) * PA_PASSO);
+  };
+
+  let arrastando = null;
+
+  const move = (ev) => {
+    if (!arrastando) return;
+    ev.preventDefault();
+    const v = valorDoEvento(ev);
+    if (arrastando === "min") pa.min = Math.min(v, pa.max);
+    else pa.max = Math.max(v, pa.min);
+    redesenha();
+  };
+
+  const solta = () => {
+    arrastando = null;
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", solta);
+  };
+
+  const pega = (qual) => (ev) => {
+    ev.preventDefault();
+    arrastando = qual;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", solta);
+  };
+
+  hMin.addEventListener("pointerdown", pega("min"));
+  hMax.addEventListener("pointerdown", pega("max"));
+
+  // Tocar no mostrador leva a bolinha mais próxima até ali.
+  svg.addEventListener("pointerdown", (ev) => {
+    if (ev.target === hMin || ev.target === hMax) return;
+    const v = valorDoEvento(ev);
+    const qual = Math.abs(v - pa.min) <= Math.abs(v - pa.max) ? "min" : "max";
+    if (qual === "min") pa.min = Math.min(v, pa.max);
+    else pa.max = Math.max(v, pa.min);
+    redesenha();
+    pega(qual)(ev);
+  });
+
+  // Setas do teclado nas bolinhas.
+  const teclado = (qual) => (ev) => {
+    const passo = ev.key === "PageUp" || ev.key === "PageDown" ? 20 : PA_PASSO;
+    let d = 0;
+    if (ev.key === "ArrowRight" || ev.key === "ArrowUp" || ev.key === "PageUp") d = passo;
+    if (ev.key === "ArrowLeft" || ev.key === "ArrowDown" || ev.key === "PageDown") d = -passo;
+    if (!d) return;
+    ev.preventDefault();
+    if (qual === "min") pa.min = limita(Math.min(pa.min + d, pa.max));
+    else pa.max = limita(Math.max(pa.max + d, pa.min));
+    redesenha();
+  };
+  hMin.addEventListener("keydown", teclado("min"));
+  hMax.addEventListener("keydown", teclado("max"));
+
+  // Campos escritos e mostrador andam juntos nos dois sentidos.
+  inMin.addEventListener("input", () => {
+    const v = parseInt(inMin.value, 10);
+    if (Number.isNaN(v)) return;
+    pa.min = Math.min(limita(v), pa.max);
+    redesenha("campo-min");
+  });
+  inMax.addEventListener("input", () => {
+    const v = parseInt(inMax.value, 10);
+    if (Number.isNaN(v)) return;
+    pa.max = Math.max(limita(v), pa.min);
+    redesenha("campo-max");
+  });
+  // Ao sair do campo, mostra o valor já ajustado.
+  inMin.addEventListener("blur", () => redesenha());
+  inMax.addEventListener("blur", () => redesenha());
+
+  redesenha();
+
+  app.querySelector('[data-modo="opcoes"]').onclick = () => trocaModoPainel(item, "opcoes");
+}
+
+/* Texto curto da medição, mostrado no item e no resumo final. */
+function resumoMedicao(item) {
+  const st = state.sintomas[item.id];
+  if (!st) return "";
+  if (item.painel === "febre" && st.medida != null) {
+    return `${st.medida.toFixed(1)} °C · ${classificaTemperatura(st.medida).rotulo}`;
+  }
+  if (item.painel === "pressao" && st.pressao) {
+    return `${st.pressao.max} / ${st.pressao.min} mmHg`;
+  }
+  if (st.subIndex != null && item.sub) return item.sub.options[st.subIndex].label;
+  return "Sem resposta";
 }
 
 /* --------------- 5. Sintomas — uma parte por sistema do corpo ------------ */
@@ -1199,43 +1739,57 @@ function renderSintomas() {
   const i = state.sintomaParte;
   const cat = SYMPTOM_CATEGORIES[i];
   const ultima = i === total - 1;
+  state.painel = null; // painéis são efêmeros; a resposta é que fica guardada
 
   app.appendChild(
     h(`
     ${progressHtml()}
     ${trilhaHtml()}
-    <div class="card">
-      ${backHtml()}
-      <span class="eyebrow">Sintomas · parte ${i + 1} de ${total}</span>
+    <div class="slide-wrap" id="slide-wrap">
+      <div class="slide-track">
+        <div class="slide-pane" id="pane-main">
+          <div class="card">
+            ${backHtml()}
+            <span class="eyebrow">Sintomas · parte ${i + 1} de ${total}</span>
 
-      <div class="sistema-head">
-        <span class="sistema-icone">${iconeSistema(cat, 24)}</span>
-        <h2 class="sistema-nome">${cat.title}</h2>
-      </div>
-      <p class="hint">Marque o que a pessoa apresenta neste sistema. Se não houver nada, siga em frente.</p>
+            <div class="sistema-head">
+              <span class="sistema-icone">${iconeSistema(cat, 24)}</span>
+              <h2 class="sistema-nome">${cat.title}</h2>
+            </div>
+            <p class="hint">Marque o que a pessoa apresenta neste sistema. Se não houver nada, siga em frente.</p>
 
-      <div class="item-list">
-        ${cat.items.map((item) => itemHtml(item, "sint")).join("")}
-      </div>
+            <div class="item-list">
+              ${cat.items.map((item) => itemHtml(item, "sint")).join("")}
+            </div>
 
-      <div class="error-text" id="erro-sintomas" hidden>
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.8v4.6M12 16.2h.01"/></svg>
-        Selecione pelo menos um sintoma antes de ver o encaminhamento.
-      </div>
+            <div class="error-text" id="erro-sintomas" hidden>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.8v4.6M12 16.2h.01"/></svg>
+              Selecione pelo menos um sintoma antes de ver o encaminhamento.
+            </div>
 
-      <div class="parte-rodape">
-        <span id="contador-sintomas">${textoContador()}</span>
-      </div>
+            <div class="parte-rodape">
+              <span id="contador-sintomas">${textoContador()}</span>
+            </div>
 
-      <div class="btn-row">
-        ${
-          i > 0
-            ? `<button class="btn subtle" type="button" data-action="anterior">Anterior</button>`
-            : ""
-        }
-        <button class="btn primary grow-2" type="button" data-action="${ultima ? "finalizar" : "proximo"}">
-          ${ultima ? "Ver encaminhamento" : "Próximo sistema"}
-        </button>
+            <div class="btn-row">
+              ${
+                i > 0
+                  ? `<button class="btn subtle" type="button" data-action="anterior">Anterior</button>`
+                  : ""
+              }
+              <button class="btn primary grow-2" type="button" data-action="${ultima ? "finalizar" : "proximo"}">
+                ${ultima ? "Ver encaminhamento" : "Próximo sistema"}
+              </button>
+            </div>
+
+            ${
+              ultima
+                ? ""
+                : `<button class="btn atalho" type="button" data-action="finalizar">Ver encaminhamento</button>`
+            }
+          </div>
+        </div>
+        <div class="slide-pane" id="pane-painel"></div>
       </div>
     </div>
   `)
@@ -1254,20 +1808,45 @@ function renderSintomas() {
   const proximo = app.querySelector('[data-action="proximo"]');
   if (proximo) proximo.onclick = () => irParaParte(i + 1);
 
-  const finalizar = app.querySelector('[data-action="finalizar"]');
-  if (finalizar) {
-    finalizar.onclick = () => {
-      if (!totalMarcados()) {
-        const erro = app.querySelector("#erro-sintomas");
-        erro.hidden = false;
-        erro.scrollIntoView({ block: "center", behavior: "smooth" });
-        return;
-      }
-      go("resultado");
-    };
-  }
+  app.querySelectorAll('[data-action="finalizar"]').forEach((b) => (b.onclick = pedeEncaminhamento));
+
+  // Rede de segurança para navegadores sem `overflow: clip`: se o foco em um
+  // campo do painel fizer o contêiner rolar, devolve-o à posição zero.
+  const wrap = app.querySelector("#slide-wrap");
+  wrap.addEventListener("scroll", () => {
+    if (wrap.scrollLeft !== 0) wrap.scrollLeft = 0;
+  });
 
   wireBack();
+}
+
+/* Pede o encaminhamento; avisa se ainda faltam sistemas por ver. */
+function pedeEncaminhamento() {
+  if (!totalMarcados()) {
+    const erro = app.querySelector("#erro-sintomas");
+    erro.hidden = false;
+    erro.scrollIntoView({ block: "center", behavior: "smooth" });
+    return;
+  }
+
+  const faltam = SYMPTOM_CATEGORIES.length - state.partesVistas.size;
+  if (faltam > 0) {
+    const nomes = SYMPTOM_CATEGORIES.filter((_, i) => !state.partesVistas.has(i))
+      .map((c) => c.curto)
+      .join(", ");
+    abreModal({
+      titulo: "Ver o encaminhamento agora?",
+      texto: `Você ainda não abriu ${
+        faltam === 1 ? "1 sistema" : `${faltam} sistemas`
+      }: ${nomes}. Sintomas não marcados podem mudar o encaminhamento.`,
+      cancelar: "Revisar",
+      confirmar: "Ver agora",
+      aoConfirmar: () => go("resultado"),
+    });
+    return;
+  }
+
+  go("resultado");
 }
 
 /* ------------------------------ Resultado -------------------------------- */
@@ -1291,6 +1870,8 @@ function computeResultado() {
         code = opt.code;
         detalhe = opt.label;
         if (opt.policia) policia = true;
+        // Quando houve medição, ela é mais informativa que o rótulo da opção.
+        if (item.painel) detalhe = resumoMedicao(item);
       } else {
         code = item.code;
       }

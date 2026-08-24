@@ -601,6 +601,303 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
   text-align: center;
 }
 
+/* Atalho para ver o encaminhamento sem passar por todos os sistemas. */
+.btn.atalho {
+  margin-top: 9px;
+  text-align: center;
+  font-size: 0.88rem;
+  font-weight: 600;
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border-strong);
+  color: var(--text-soft);
+  padding: 11px 14px;
+}
+.btn.atalho:hover { border-style: solid; border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+
+/* ------------------- Painel deslizante (medições) ------------------------ */
+
+.slide-wrap {
+  /* `clip` recorta sem criar caixa rolável. Sem isso, focar um campo do
+     painel faz o navegador rolar este contêiner para "revelar" o elemento
+     pela posição de layout, ignorando o translate — e a tela sai do lugar. */
+  overflow: hidden;
+  overflow: clip;
+  transition: height .34s cubic-bezier(.4, 0, .2, 1);
+}
+.slide-track {
+  display: flex;
+  width: 200%;
+  align-items: flex-start;
+  transition: transform .34s cubic-bezier(.4, 0, .2, 1);
+}
+.slide-wrap.aberto .slide-track { transform: translateX(-50%); }
+.slide-pane { width: 50%; flex: 0 0 50%; }
+.painel-card { margin-bottom: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .slide-wrap, .slide-track { transition: none; }
+}
+
+/* ------------------------------- Modal ----------------------------------- */
+
+.modal-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(10, 20, 28, .55);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+.modal-fundo.aberto { opacity: 1; }
+
+.modal {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 24px 22px;
+  transform: translateY(10px) scale(.98);
+  transition: transform .22s cubic-bezier(.2, .7, .3, 1);
+}
+.modal-fundo.aberto .modal { transform: none; }
+.modal h2 { margin-bottom: 8px; }
+.modal p { margin: 0; color: var(--text-soft); font-size: 0.92rem; }
+
+/* --------------------- Resumo da medição no item ------------------------- */
+
+.medicao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 2px 13px 12px 44px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.medicao-valor { font-size: 0.88rem; font-weight: 700; }
+.btn-mini {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--brand);
+  background: transparent;
+  border: 1.5px solid var(--brand);
+  border-radius: var(--r-full);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.btn-mini:hover { background: var(--brand-soft); }
+
+/* Opções em cartão, usadas no "não consigo medir". */
+.radio-cards { gap: 8px; margin-bottom: 16px; }
+.radio-card {
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  padding: 12px 13px;
+  font-size: 0.93rem;
+  color: var(--text);
+}
+.radio-card:hover { border-color: var(--brand); }
+.radio-card:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
+
+/* ----------------------------- Termômetro -------------------------------- */
+
+/* Cores por faixa de temperatura. */
+.zona-frio    { --zona: #2f6fd0; }
+.zona-normal  { --zona: var(--ubs); }
+.zona-baixa   { --zona: #b8890a; }
+.zona-moderada{ --zona: var(--upa); }
+.zona-alta    { --zona: var(--danger); }
+
+.termo-leitura { text-align: center; margin: 6px 0 18px; line-height: 1; }
+.termo-valor {
+  font-size: 3.1rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.termo-un { font-size: 1.3rem; font-weight: 700; color: var(--muted); margin-left: 3px; }
+.termo-rotulo {
+  margin-top: 10px;
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--zona, var(--muted));
+  background: color-mix(in srgb, var(--zona, var(--muted)) 14%, transparent);
+  border-radius: var(--r-full);
+  padding: 5px 13px;
+}
+
+.termo {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  height: 300px;
+  margin: 0 auto 20px;
+  width: 190px;
+}
+
+.termo-marcas { position: relative; width: 46px; }
+.termo-marca {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.termo-marca::after { content: ""; width: 7px; height: 1.5px; background: var(--border-strong); }
+
+.termo-corpo {
+  position: relative;
+  width: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.termo-tubo {
+  position: relative;
+  flex: 1;
+  width: 22px;
+  border-radius: var(--r-full);
+  background: var(--track);
+  border: 2px solid var(--border-strong);
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+}
+.termo-merc {
+  width: 100%;
+  background: linear-gradient(180deg, var(--zona, var(--brand)), color-mix(in srgb, var(--zona, var(--brand)) 72%, #000));
+  border-radius: var(--r-full) var(--r-full) 0 0;
+  transition: height .08s linear, background .2s;
+}
+.termo-bulbo {
+  width: 38px;
+  height: 38px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: var(--zona, var(--brand));
+  border: 2px solid var(--border-strong);
+  transition: background .2s;
+}
+
+/* Range real por cima do desenho: mantém teclado e toque nativos. */
+.termo-range {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 262px;   /* = altura útil do tubo */
+  height: 46px;
+  margin: 0;
+  transform: translate(-50%, -50%) rotate(-90deg) translateY(30px);
+  opacity: 0;
+  cursor: ns-resize;
+  background: none;
+}
+.termo:focus-within .termo-tubo { box-shadow: 0 0 0 3.5px var(--ring); }
+
+/* -------------------- Manômetro de pressão arterial ---------------------- */
+
+.pa-wrap { display: flex; justify-content: center; margin: 4px 0 6px; }
+.pa-svg { width: 100%; max-width: 290px; touch-action: none; }
+
+.pa-trilho { fill: none; stroke: var(--track); stroke-width: 13; stroke-linecap: round; }
+.pa-seg { fill: none; stroke-width: 13; stroke-linecap: butt; }
+.pa-verde { stroke: var(--ubs); }
+.pa-amarelo { stroke: var(--upa); }
+.pa-vermelho { stroke: var(--danger); }
+
+.pa-marca { stroke: var(--border-strong); stroke-width: 1.4; }
+.pa-marca.maior { stroke: var(--muted); stroke-width: 2.2; }
+.pa-num {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  font-family: inherit;
+}
+
+.pa-bolinha {
+  fill: var(--surface);
+  stroke: var(--brand);
+  stroke-width: 4;
+  cursor: grab;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .25));
+}
+.pa-bolinha:active { cursor: grabbing; }
+.pa-bolinha:focus { outline: none; stroke-width: 6; }
+.pa-bolinha.min { stroke: var(--muted); }
+
+.pa-leitura {
+  fill: var(--text);
+  font-size: 34px;
+  font-weight: 800;
+  text-anchor: middle;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.pa-leitura-un {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-anchor: middle;
+  font-family: inherit;
+}
+
+.pa-campos {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  margin: 6px 0 18px;
+}
+.pa-campo { flex: 1; max-width: 150px; }
+.pa-campo-rot {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.pa-campo input {
+  width: 100%;
+  font: inherit;
+  font-size: 1.3rem;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding: 10px 8px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.pa-campo input:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); border-color: var(--brand); }
+.pa-barra { font-size: 1.5rem; font-weight: 800; color: var(--muted); padding-bottom: 9px; }
+
 /* ------------------------------ Itens marcáveis -------------------------- */
 
 .check-item {
