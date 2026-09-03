@@ -185,6 +185,12 @@ function criaContexto(state) {
     puerperio: state.puerperio,
     pressaoEstagio: () => classificaPressao(state),
     pressaoBanda: () => pressaoBanda(state.idade),
+    /* As regras de pressão exigem AUSÊNCIA de hipertensão no histórico.
+       Enquanto o histórico não foi perguntado, "ausente" e "ainda não
+       perguntado" seriam indistinguíveis — e a regra dispararia cedo
+       demais, encerrando a triagem antes de a pessoa poder informar o
+       diagnóstico que justamente a desativa. */
+    historicoRespondido: () => !!state.comorbidadesRespondidas,
   };
 }
 
@@ -419,7 +425,7 @@ const SINERGIAS = [
     nivel: "hospital",
     titulo: "Pressão em nível de hipertensão (até 1 ano, sem diagnóstico prévio)",
     porque: "Em bebês até 1 ano sem hipertensão conhecida, esse nível de pressão pede avaliação hospitalar.",
-    quando: (c) => c.pressaoBanda() === "neonatal" && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão",
+    quando: (c) => c.pressaoBanda() === "neonatal" && c.historicoRespondido() && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão",
   },
   {
     id: "pa_crianca_hipertensao1",
@@ -427,7 +433,7 @@ const SINERGIAS = [
     titulo: "Pressão em hipertensão estágio 1 (1 a 17 anos, sem diagnóstico prévio)",
     porque: "Sem hipertensão conhecida, esse nível pede avaliação de urgência.",
     quando: (c) =>
-      c.pressaoBanda() === "crianca" && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão 1",
+      c.pressaoBanda() === "crianca" && c.historicoRespondido() && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão 1",
   },
   {
     id: "pa_crianca_hipertensao2",
@@ -435,7 +441,7 @@ const SINERGIAS = [
     titulo: "Pressão em hipertensão estágio 2 (1 a 17 anos, sem diagnóstico prévio)",
     porque: "Sem hipertensão conhecida, esse nível pede avaliação hospitalar.",
     quando: (c) =>
-      c.pressaoBanda() === "crianca" && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão 2",
+      c.pressaoBanda() === "crianca" && c.historicoRespondido() && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão 2",
   },
   {
     id: "pa_adulto_hipertensao1e2",
@@ -444,7 +450,7 @@ const SINERGIAS = [
     porque: "Sem hipertensão conhecida, esse nível pede avaliação de urgência.",
     quando: (c) =>
       c.pressaoBanda() === "adulto" &&
-      !c.cond("hipertensao") &&
+      c.historicoRespondido() && !c.cond("hipertensao") &&
       ["hipertensão 1", "hipertensão 2"].includes(c.pressaoEstagio()),
   },
   {
@@ -452,7 +458,7 @@ const SINERGIAS = [
     nivel: "hospital",
     titulo: "Pressão em hipertensão estágio 3 (18 anos ou mais, sem diagnóstico prévio)",
     porque: "Sem hipertensão conhecida, esse nível pede avaliação hospitalar.",
-    quando: (c) => c.pressaoBanda() === "adulto" && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão 3",
+    quando: (c) => c.pressaoBanda() === "adulto" && c.historicoRespondido() && !c.cond("hipertensao") && c.pressaoEstagio() === "hipertensão 3",
   },
 ];
 

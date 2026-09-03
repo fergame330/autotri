@@ -462,7 +462,6 @@ let history_ = [];
 function freshState() {
   return {
     step: "intro",
-    quem: null, // "para_mim" | "outra_pessoa"
     idade: null, // number | "nao_sei"
     populacao: null,
     subpopulacao: "x",
@@ -471,7 +470,7 @@ function freshState() {
     gravida_tempo: "x", // 1 | 2 | 3 | "x"
     puerperio: "x", // "imediato" | "tardio" | "remoto" | "x"
     lactante: "nao",
-    altura: null, // number (cm), só perguntada para crianças de 1 a 12 anos
+    altura: null, // number (cm), só perguntada quando a pressão precisa dela
     comorbidades: {}, // id -> { checked, extraValue }
     sintomas: {}, // id -> { checked, subIndex }
     // Acordeão do histórico de saúde: só a primeira seção começa aberta.
@@ -480,6 +479,15 @@ function freshState() {
     sintomaParte: 0,
     // Partes já abertas, para avisar quem pede o encaminhamento antes do fim.
     partesVistas: new Set([0]),
+
+    // Blocos de perfil já respondidos. A triagem só pergunta o que ainda
+    // pode mudar o encaminhamento, e nunca repete um bloco já respondido.
+    idadeRespondida: false,
+    generoRespondido: false,
+    alturaRespondida: false,
+    comorbidadesRespondidas: false,
+    // Para onde voltar quando um bloco de perfil termina.
+    retomar: null, // null (triagem) | { tipo:"pressao", parte, itemId }
   };
 }
 
@@ -538,30 +546,82 @@ function back() {
   window.scrollTo(0, 0);
 }
 
-/* Depois do bloco de sexo/gravidez/lactação: crianças de 1 a 12 anos
-   respondem a altura (necessária para classificar a pressão arterial por
-   percentil); as demais idades seguem direto para o histórico de saúde. */
-function proximoAposGenero() {
+/* ===================== Roteamento em degraus ============================
+   Os sintomas vêm primeiro. Depois deles, cada bloco de perfil só é
+   perguntado se ainda puder mudar o encaminhamento: assim que o resultado
+   chega em hospital (ou SAMU), a triagem para e mostra o resultado.
+
+   O painel de pressão é o outro consumidor desses blocos — ele precisa da
+   idade e, entre 1 e 12 anos, também de gênero e altura para classificar a
+   leitura por percentil. `state.retomar` guarda para onde voltar quando o
+   bloco pedido pelo painel termina. Um bloco já respondido nunca se repete.
+   ======================================================================= */
+
+/* O que ainda falta para o painel de pressão poder classificar a leitura. */
+function pendenciaPressao() {
+  if (!state.idadeRespondida) return "idade";
   const idade = state.idade;
-  if (typeof idade === "number" && idade >= 1 && idade <= 12) go("altura");
-  else go("comorbidades");
+  // Só a faixa de 1 a 12 anos usa a tabela por percentil (sexo + altura).
+  const usaPercentil = typeof idade === "number" && idade >= 1 && idade <= 12;
+  if (usaPercentil && !state.generoRespondido) return "sexo";
+  if (usaPercentil && !state.alturaRespondida) return "altura";
+  return null;
 }
 
+/* Sobe um degrau: pergunta o próximo bloco que ainda pode mudar o destino. */
+function avancaTriagem() {
+  const r = computeResultado();
+  if (r.samu || r.destino === "hospital") return go("resultado");
+
+  if (!state.idadeRespondida) return go("idade");
+  if (!state.generoRespondido) return go("sexo");
+  if (!state.comorbidadesRespondidas) return go("comorbidades");
+  return go("resultado");
+}
+
+/* Chamado ao fim de cada bloco de perfil. */
+function retomaContexto() {
+  const ctx = state.retomar;
+
+  if (ctx && ctx.tipo === "pressao") {
+    const falta = pendenciaPressao();
+    if (falta) return go(falta);
+    state.retomar = null;
+    return reabrePainel(ctx);
+  }
+
+  state.retomar = null;
+  return avancaTriagem();
+}
+
+/* Volta à lista de sintomas na parte certa e reabre o painel de medição. */
+function reabrePainel(ctx) {
+  history_.push({ step: state.step, parte: state.sintomaParte });
+  state.step = "sintomas";
+  state.sintomaParte = ctx.parte;
+  state.partesVistas.add(ctx.parte);
+  render();
+  window.scrollTo(0, 0);
+
+  const item = SYMPTOM_CATEGORIES.flatMap((c) => c.items).find((i) => i.id === ctx.itemId);
+  if (item) abrePainel(item);
+}
+
+/* Etapas de perfil e histórico são condicionais, então a barra mostra o
+   nome da fase em vez de um "etapa N de M" que mudaria de total. */
 const STEP_META = {
-  quem: { n: 1, pct: 12 },
-  idade: { n: 2, pct: 26 },
-  semanas_bebe: { n: 2, pct: 33 },
-  sexo: { n: 3, pct: 43 },
-  gravidez: { n: 3, pct: 48 },
-  trimestre: { n: 3, pct: 53 },
-  puerperio_tempo: { n: 3, pct: 53 },
-  suspeita_gravidez: { n: 3, pct: 53 },
-  lactante: { n: 3, pct: 58 },
-  altura: { n: 3, pct: 61 },
-  comorbidades: { n: 4, pct: 74 },
-  sintomas: { n: 5, pct: 92 },
+  sintomas: { fase: "Sintomas", pct: 30 },
+  idade: { fase: "Perfil", pct: 62 },
+  semanas_bebe: { fase: "Perfil", pct: 66 },
+  sexo: { fase: "Perfil", pct: 70 },
+  gravidez: { fase: "Perfil", pct: 73 },
+  trimestre: { fase: "Perfil", pct: 76 },
+  puerperio_tempo: { fase: "Perfil", pct: 76 },
+  suspeita_gravidez: { fase: "Perfil", pct: 76 },
+  lactante: { fase: "Perfil", pct: 79 },
+  altura: { fase: "Perfil", pct: 82 },
+  comorbidades: { fase: "Histórico de saúde", pct: 92 },
 };
-const TOTAL_ETAPAS = 5;
 
 function progressHtml() {
   const meta = STEP_META[state.step];
@@ -571,13 +631,13 @@ function progressHtml() {
   let pct = meta.pct;
   if (state.step === "sintomas") {
     const total = SYMPTOM_CATEGORIES.length;
-    pct = 76 + ((state.sintomaParte + 1) / total) * 22;
+    pct = 8 + ((state.sintomaParte + 1) / total) * 48;
   }
 
   return `
     <div class="progress">
       <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
-      <div class="progress-step">Etapa ${meta.n} de ${TOTAL_ETAPAS}</div>
+      <div class="progress-step">${meta.fase}</div>
     </div>`;
 }
 
@@ -640,7 +700,6 @@ function render() {
   const renderers = {
     intro: renderIntro,
     samu: renderSamu,
-    quem: renderQuem,
     idade: renderIdade,
     semanas_bebe: renderSemanasBebe,
     sexo: renderSexo,
@@ -674,7 +733,7 @@ function renderIntro() {
   `)
   );
   app.querySelector('[data-v="sim"]').onclick = () => go("samu");
-  app.querySelector('[data-v="nao"]').onclick = () => go("quem");
+  app.querySelector('[data-v="nao"]').onclick = () => go("sintomas");
 }
 
 function renderSamu() {
@@ -707,36 +766,11 @@ function renderSamu() {
     </div>
   `)
   );
-  app.querySelector('[data-action="continuar"]').onclick = () => go("quem");
+  app.querySelector('[data-action="continuar"]').onclick = () => go("sintomas");
   app.querySelector('[data-action="reiniciar"]').onclick = resetState;
 }
 
-/* ------------------------------ 2. Quem ---------------------------------- */
-
-function renderQuem() {
-  app.appendChild(
-    h(`
-    ${progressHtml()}
-    <div class="card">
-      ${backHtml()}
-      <p class="question">É uma queixa para você ou para outra pessoa?</p>
-      <div class="options">
-        <button class="btn" type="button" data-v="para_mim">Para mim</button>
-        <button class="btn" type="button" data-v="outra_pessoa">Para outra pessoa</button>
-      </div>
-    </div>
-  `)
-  );
-  app.querySelectorAll("[data-v]").forEach((b) => {
-    b.onclick = () => {
-      state.quem = b.dataset.v;
-      go("idade");
-    };
-  });
-  wireBack();
-}
-
-/* ------------------------------ 3.1 Idade -------------------------------- */
+/* ------------------------------ Idade ------------------------------------ */
 
 function classificaIdade(idade) {
   if (idade === "nao_sei") return "adulto_clinico";
@@ -768,7 +802,10 @@ function renderIdade() {
   const avancar = (idade) => {
     state.idade = idade;
     state.populacao = classificaIdade(idade);
-    go(idade !== "nao_sei" && idade <= 2 ? "semanas_bebe" : "sexo");
+    // Até 2 anos o bloco continua na pergunta de semanas de vida.
+    if (idade !== "nao_sei" && idade <= 2) return go("semanas_bebe");
+    state.idadeRespondida = true;
+    retomaContexto();
   };
 
   app.querySelector('[data-action="confirmar"]').onclick = () => avancar(Number(input.value));
@@ -800,7 +837,8 @@ function renderSemanasBebe() {
   const avancar = (semanas) => {
     state.semanas_bebe = semanas;
     state.subpopulacao = semanas !== "nao_sei" && semanas < 4 ? "neonatal" : "lactente";
-    go("sexo");
+    state.idadeRespondida = true;
+    retomaContexto();
   };
 
   app.querySelector('[data-action="confirmar"]').onclick = () => avancar(Number(input.value));
@@ -832,7 +870,8 @@ function renderSexo() {
         go("gravidez");
       } else {
         state.genero = "homem";
-        proximoAposGenero();
+        state.generoRespondido = true;
+        retomaContexto();
       }
     };
   });
@@ -997,7 +1036,8 @@ function renderLactante() {
   app.querySelectorAll("[data-v]").forEach((b) => {
     b.onclick = () => {
       state.lactante = b.dataset.v === "sim" ? "sim" : "nao";
-      proximoAposGenero();
+      state.generoRespondido = true;
+      retomaContexto();
     };
   });
   wireBack();
@@ -1179,7 +1219,10 @@ function ligaAltura(valorInicial) {
     aplica();
   });
 
-  app.querySelector('[data-action="continuar"]').onclick = () => go("comorbidades");
+  app.querySelector('[data-action="continuar"]').onclick = () => {
+    state.alturaRespondida = true;
+    retomaContexto();
+  };
 }
 
 /* ------------------- Acordeão de itens marcáveis (4 e 5) ----------------- */
@@ -1329,11 +1372,11 @@ function ligaItem(node, item, kind, categories) {
     trocaItem(item, kind, categories);
 
     // Marcar febre ou pressão já abre o painel de medição.
-    if (cb.checked && item.painel) abrePainel(item);
+    if (cb.checked && item.painel) abrePainelOuPerfil(item);
   };
 
   const abrir = node.querySelector("[data-abrir]");
-  if (abrir) abrir.onclick = () => abrePainel(item);
+  if (abrir) abrir.onclick = () => abrePainelOuPerfil(item);
 
   node.querySelectorAll("[data-sub]").forEach((r) => {
     r.onchange = () => {
@@ -1388,7 +1431,10 @@ function renderComorbidades() {
   `)
   );
   ligaAcordeao(COMORBIDITY_CATEGORIES, "comorb");
-  app.querySelector('[data-action="continuar"]').onclick = () => go("sintomas");
+  app.querySelector('[data-action="continuar"]').onclick = () => {
+    state.comorbidadesRespondidas = true;
+    go("resultado");
+  };
   wireBack();
 }
 
@@ -1479,6 +1525,21 @@ function animaAlturaSlide(wrapEl, de, para, aoFim) {
   wrapEl._timerAltura = setTimeout(() => {
     if (aoFim) aoFim();
   }, DUR_SLIDE);
+}
+
+/* A pressão só pode ser classificada com idade (e, entre 1 e 12 anos, com
+   gênero e altura). Se algo disso ainda não foi perguntado, sai da lista de
+   sintomas para perguntar e volta ao painel depois. Blocos já respondidos
+   em outro momento da triagem não são pedidos de novo. */
+function abrePainelOuPerfil(item) {
+  if (item.painel === "pressao") {
+    const falta = pendenciaPressao();
+    if (falta) {
+      state.retomar = { tipo: "pressao", parte: state.sintomaParte, itemId: item.id };
+      return go(falta);
+    }
+  }
+  abrePainel(item);
 }
 
 function abrePainel(item) {
@@ -2194,12 +2255,12 @@ function pedeEncaminhamento() {
       }: ${nomes}. Sintomas não marcados podem mudar o encaminhamento.`,
       cancelar: "Revisar",
       confirmar: "Ver agora",
-      aoConfirmar: () => go("resultado"),
+      aoConfirmar: avancaTriagem,
     });
     return;
   }
 
-  go("resultado");
+  avancaTriagem();
 }
 
 /* ------------------------------ Resultado -------------------------------- */
@@ -2492,14 +2553,23 @@ function renderResultado() {
       <p class="hint" style="margin-bottom:0">Mostre estas informações à equipe de saúde.</p>
 
       <ul class="sum-list">
-        <li><span class="k">Queixa</span><span class="v">${state.quem === "para_mim" ? "Para mim" : "Para outra pessoa"}</span></li>
-        <li><span class="k">Idade</span><span class="v">${idadeTxt}</span></li>
-        <li><span class="k">Faixa etária</span><span class="v">${LABEL_POP[state.populacao] || "—"}</span></li>
-        <li><span class="k">Sexo biológico</span><span class="v">${state.genero === "mulher" ? "Feminino" : "Masculino"}</span></li>
+        ${
+          // A triagem pode terminar antes de perguntar perfil: só mostra o
+          // que realmente foi respondido, em vez de inventar um valor.
+          state.idadeRespondida
+            ? `<li><span class="k">Idade</span><span class="v">${idadeTxt}</span></li>
+               <li><span class="k">Faixa etária</span><span class="v">${LABEL_POP[state.populacao] || "—"}</span></li>`
+            : ""
+        }
+        ${
+          state.generoRespondido
+            ? `<li><span class="k">Sexo biológico</span><span class="v">${state.genero === "mulher" ? "Feminino" : "Masculino"}</span></li>`
+            : ""
+        }
         ${LABEL_SUB[state.subpopulacao] ? `<li><span class="k">Condição</span><span class="v">${LABEL_SUB[state.subpopulacao]}</span></li>` : ""}
         ${state.subpopulacao === "gravida" ? `<li><span class="k">Trimestre</span><span class="v">${state.gravida_tempo}º</span></li>` : ""}
         ${state.subpopulacao === "puerperio" ? `<li><span class="k">Puerpério</span><span class="v">${LABEL_PUERP[state.puerperio]}</span></li>` : ""}
-        ${state.genero === "mulher" ? `<li><span class="k">Lactante</span><span class="v">${state.lactante === "sim" ? "Sim" : "Não"}</span></li>` : ""}
+        ${state.generoRespondido && state.genero === "mulher" ? `<li><span class="k">Lactante</span><span class="v">${state.lactante === "sim" ? "Sim" : "Não"}</span></li>` : ""}
         ${state.altura != null ? `<li><span class="k">Altura</span><span class="v">${state.altura} cm</span></li>` : ""}
       </ul>
 
