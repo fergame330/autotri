@@ -21,7 +21,7 @@ const SYMPTOM_CATEGORIES = [
         painel: "febre",
         sub: {
           options: [
-            { label: "Febre baixa", code: [0] },
+            { label: "Febre baixa", code: [0], casa: true },
             { label: "Febre moderada", code: [1] },
             { label: "Febre muito alta", code: [1, 2] },
             { label: "Hipotermia", code: [1] },
@@ -44,6 +44,17 @@ const SYMPTOM_CATEGORIES = [
       { id: "cansaco_muscular", label: "Cansaço muscular", code: [0] },
       { id: "perda_peso", label: "Perda de peso não intencional", code: [0] },
       {
+        id: "inchaco_mmii",
+        label: "Inchaço dos membros inferiores",
+        sub: {
+          options: [
+            { label: "Já é normal há muito tempo", code: [0] },
+            { label: "Primeira vez / acontece com pouca frequência", code: [1, 2] },
+            { label: "Não sei", code: [1, 2] },
+          ],
+        },
+      },
+      {
         id: "dor_garganta",
         label: "Dor de garganta",
         sub: {
@@ -54,7 +65,18 @@ const SYMPTOM_CATEGORIES = [
           ],
         },
       },
-      { id: "alergia", label: "Alergia", code: [0] },
+      {
+        id: "alergia",
+        label: "Alergia",
+        sub: {
+          options: [
+            { label: "Leve (coceira, espirros e/ou poucas manchas)", code: [0] },
+            { label: "Moderada (inchaço e/ou manchas espalhadas)", code: [1] },
+            { label: "Grave (falta de ar e/ou inchaço na boca ou garganta)", code: [1, 2] },
+            { label: "Não sei", code: [1, 2] },
+          ],
+        },
+      },
       {
         id: "suando",
         label: "Suando de mais e/ou suando frio",
@@ -74,7 +96,6 @@ const SYMPTOM_CATEGORIES = [
     items: [
       { id: "dor_peito", label: "Dor no peito", code: [1] },
       { id: "falta_ar", label: "Falta de ar", code: [1] },
-      { id: "cianose", label: "Extremidades da pele ou boca azuladas", code: [1] },
       {
         id: "palpitacao",
         label: "Coração batendo mais forte e/ou mais rápido",
@@ -87,17 +108,6 @@ const SYMPTOM_CATEGORIES = [
         },
       },
       { id: "desmaio", label: "Desmaio / Pré-desmaio", code: [1] },
-      {
-        id: "inchaco_mmii",
-        label: "Inchaço dos membros inferiores",
-        sub: {
-          options: [
-            { label: "Já é normal há muito tempo", code: [0] },
-            { label: "Primeira vez / acontece com pouca frequência", code: [1, 2] },
-            { label: "Não sei", code: [1, 2] },
-          ],
-        },
-      },
       {
         id: "tosse",
         label: "Tosse",
@@ -335,6 +345,7 @@ const SYMPTOM_CATEGORIES = [
         },
       },
       { id: "mancha", label: "Mancha", code: [0] },
+      { id: "cianose", label: "Extremidades da pele ou boca azuladas", code: [1] },
       {
         id: "queimadura",
         label: "Queimaduras e/ou insolação",
@@ -2270,7 +2281,34 @@ function pedeEncaminhamento() {
 /* Marcou só febre e/ou pressão, e as duas medições deram normais: não há o
    que avaliar num serviço de saúde agora. Exige medição numérica — quem
    respondeu "não consigo medir" continua indo para a UBS. */
-function apenasMedicoesNormais() {
+/* Opção que vale para o sintoma: a resposta marcada ou, sem resposta, a
+   última da lista — sempre a mais conservadora. O termômetro grava
+   `subIndex` a cada leitura, então a medição entra por aqui também. */
+function opcaoMarcada(item) {
+  if (!item.sub) return null;
+  const st = state.sintomas[item.id];
+  return item.sub.options[st.subIndex ?? item.sub.options.length - 1];
+}
+
+/* Marcações que, sozinhas, não pedem atendimento: as opções com `casa`
+   (hoje, febre baixa e temperatura normal, que o termômetro mapeia para a
+   mesma opção) e a pressão medida com classificação normal. */
+function dispensaAtendimento(item) {
+  const st = state.sintomas[item.id];
+
+  if (item.painel === "pressao") {
+    return (
+      st.pressao != null &&
+      typeof classificaPressao === "function" &&
+      classificaPressao(state) === "normal"
+    );
+  }
+
+  const opt = opcaoMarcada(item);
+  return !!(opt && opt.casa);
+}
+
+function apenasCuidadoEmCasa() {
   const marcados = [];
   SYMPTOM_CATEGORIES.forEach((cat) =>
     cat.items.forEach((item) => {
@@ -2280,20 +2318,7 @@ function apenasMedicoesNormais() {
   );
   if (!marcados.length) return false;
 
-  return marcados.every((item) => {
-    const st = state.sintomas[item.id];
-    if (item.id === "febre_hipotermia") {
-      return st.medida != null && classificaTemperatura(st.medida).zona === "normal";
-    }
-    if (item.id === "pressao_arterial") {
-      return (
-        st.pressao != null &&
-        typeof classificaPressao === "function" &&
-        classificaPressao(state) === "normal"
-      );
-    }
-    return false;
-  });
+  return marcados.every(dispensaAtendimento);
 }
 
 function computeResultado() {
@@ -2311,9 +2336,7 @@ function computeResultado() {
 
       let code, detalhe = "";
       if (item.sub) {
-        // Sem resposta na sub-pergunta, assume a última opção ("não sei"),
-        // que é sempre a mais conservadora da lista.
-        const opt = item.sub.options[st.subIndex ?? item.sub.options.length - 1];
+        const opt = opcaoMarcada(item);
         code = opt.code;
         detalhe = opt.label;
         if (opt.policia) policia = true;
@@ -2344,7 +2367,7 @@ function computeResultado() {
   // Nada além de medições normais: orienta cuidado em casa, um degrau
   // abaixo da UBS. Só vale quando nem a tabela nem as sinergias subiram.
   let destino = sin.destino;
-  if (destino === "ubs" && !sin.samu && !policia && !cvv && apenasMedicoesNormais()) {
+  if (destino === "ubs" && !sin.samu && !policia && !cvv && apenasCuidadoEmCasa()) {
     destino = "casa";
   }
 
@@ -2384,9 +2407,9 @@ const DESTINO = {
   },
   casa: {
     nome: "Cuidado em casa",
-    sub: "As medições deram normais e nenhum outro sintoma foi marcado.",
+    sub: "Nada do que você marcou pede atendimento agora.",
     texto:
-      "Por enquanto não há sinal que peça atendimento. Descanse, beba água e observe. Se aparecer qualquer sintoma novo, se as medições mudarem ou se você não se sentir bem, refaça a triagem.",
+      "Por enquanto não há sinal que peça atendimento. Descanse, beba água e observe. Se aparecer qualquer sintoma novo, se a febre subir, se as medições mudarem ou se você não se sentir bem, refaça a triagem.",
     busca: "UBS unidade básica de saúde posto de saúde",
     icon: `<path d="M4.4 10.6 12 4.5l7.6 6.1v9.4H4.4Z"/><path d="M9.6 20v-5.2h4.8V20"/>`,
   },

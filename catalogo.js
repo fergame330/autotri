@@ -387,7 +387,7 @@ function secaoResumo() {
       <li><b>Cálculo base.</b> Cada resposta tem um código: <code>0</code> → UBS, <code>1</code> → UPA, <code>1,2</code> → Hospital. Vale o maior entre todos os sintomas marcados.</li>
       <li><b>Sem resposta na sub-pergunta.</b> Vale a última opção da lista (quase sempre “Não sei”), que é a mais conservadora.</li>
       <li><b>Combinações.</b> Só <i>elevam</i> o resultado do cálculo base, nunca rebaixam. A ordem é ${["ubs", "upa", "hospital", "samu_hospital"].map((d) => DESTINO_INFO[d].nome).join(" &lt; ")}.</li>
-      <li><b>Cuidado em casa.</b> Um degrau abaixo da UBS: só aparece quando a única coisa marcada são medições que deram normais.</li>
+      <li><b>Cuidado em casa.</b> Um degrau abaixo da UBS: aparece quando <i>tudo</i> o que foi marcado dispensa atendimento — as respostas marcadas como “sozinha: Cuidado em casa” nas tabelas abaixo, e a pressão medida com classificação normal.</li>
       <li><b>Ordem das perguntas.</b> Os sintomas vêm primeiro; idade, gênero e histórico só são perguntados enquanto ainda puderem mudar o destino. Duas consequências: assim que o resultado chega ao hospital a triagem encerra, então combinações que dependem do histórico deixam de ser avaliadas; e as combinações de pressão só valem depois que o histórico foi perguntado — é o que a condição “o histórico de saúde já foi perguntado” marca.</li>
     </ul>
   </section>`;
@@ -416,6 +416,7 @@ function tabelaSintomas(cat) {
           if (opt.policia) extras.push(selinho("+ Polícia 190", "police"));
           if (opt.cvv) extras.push(selinho("+ CVV 188", "cvv"));
           if (opt.caps) extras.push(selinho("+ CAPS", "cvv"));
+          if (opt.casa) extras.push(`<span class="obs">sozinha: ${selo("casa")}</span>`);
           linhas.push(
             `<tr>${i === 0 ? cabeca(item.sub.options.length) : ""}
                <td class="resp">${esc(opt.label)}</td>
@@ -487,10 +488,9 @@ function secaoFebre() {
           : f.fim === TEMP_MAX / 10
           ? `${num(f.ini)} °C ou mais`
           : `${num(f.ini)} – ${num(f.fim)} °C`;
-      const extra =
-        f.zona === "normal"
-          ? `<span class="obs">se for a única marcação: ${selo("casa")}</span>`
-          : "";
+      const extra = item.sub.options[f.indice].casa
+        ? `<span class="obs">sozinha: ${selo("casa")}</span>`
+        : "";
       return `<tr><td class="cod">${faixa}</td><td>${esc(f.rotulo)}</td>
         <td class="cod"><code>${code.join(",")}</code></td>
         <td>${selo(destinoDeCodigo(code))}${extra}</td></tr>`;
@@ -576,7 +576,7 @@ function secaoPressao() {
   return `
   <div class="cat">
     <h3>Manômetro — pressão arterial</h3>
-    <p class="sub">A pressão não tem código próprio: qualquer resposta do sintoma vale <code>0</code>. O que muda o encaminhamento são as combinações de pressão listadas adiante, e só quando a pessoa <b>não</b> tem hipertensão no histórico. Uma leitura atinge um patamar quando a sistólica <b>ou</b> a diastólica alcança o valor de referência — o pior dos dois eixos manda.</p>
+    <p class="sub">A pressão não tem código próprio: qualquer resposta do sintoma vale <code>0</code>. O que muda o encaminhamento são as combinações de pressão listadas adiante, e só quando a pessoa <b>não</b> tem hipertensão no histórico. Uma leitura normal, se for a única marcação da triagem, leva a ${selo("casa")}. Uma leitura atinge um patamar quando a sistólica <b>ou</b> a diastólica alcança o valor de referência — o pior dos dois eixos manda.</p>
 
     ${tabelaPatamares("Até 1 ano", patamaresDe([["pre-hipertensão", neo.base], ["hipertensão", neo.hiper]]))}
 
