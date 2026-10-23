@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light dark" />
+<!-- Página de referência: fora dos buscadores. -->
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+<meta name="googlebot" content="noindex, nofollow" />
+<title>Catálogo de encaminhamentos — Auto Triagem</title>
+<link rel="icon" href="data:," />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="catalogo.css" />
+</head>
+<body class="pagina-catalogo">
+
+<header class="app-header">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" width="32" height="32">
+        <rect width="32" height="32" rx="9" fill="currentColor" />
+        <path d="M6.5 16.5h4.2l2-4.6 3.2 9.2 2.4-5.4 1.5 2.1h5.7"
+              stroke="#fff" stroke-width="2.1" fill="none"
+              stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </span>
+    <span class="brand-text">
+      <strong>Auto Triagem</strong>
+      <small>Catálogo de encaminhamentos</small>
+    </span>
+  </div>
+
+  <div class="header-acoes">
+    <a class="voltar" href="index.html" rel="nofollow">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14.5 6 8.5 12l6 6" />
+      </svg>
+      Triagem
+    </a>
+
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="Alternar tema claro e escuro" title="Alternar tema">
+      <svg class="ico-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="4.2" />
+        <path d="M12 2.4v2.2M12 19.4v2.2M4.2 12H2M22 12h-2.2M5.9 5.9 4.4 4.4M19.6 19.6l-1.5-1.5M18.1 5.9l1.5-1.5M4.4 19.6l1.5-1.5" />
+      </svg>
+      <svg class="ico-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8Z" />
+      </svg>
+    </button>
+  </div>
+</header>
+
+<div class="barra-busca">
+  <div class="busca-campo">
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.4" /><path d="m16 16 4.2 4.2" />
+    </svg>
+    <input id="busca" type="search" placeholder="Buscar sintoma, resposta ou combinação…"
+           autocomplete="off" aria-label="Buscar no catálogo" />
+  </div>
+  <span id="busca-conta" class="busca-conta" role="status" aria-live="polite"></span>
+</div>
+
+<main id="catalogo" role="main"></main>
+
+<footer class="app-footer">
+  Página de referência, sem indexação. Material de apoio — não substitui avaliação médica.
+</footer>
+
+<script src="dadospressao.js"></script>
+<script src="sinergias.js"></script>
+<script src="app.js"></script>
+<script src="catalogo.js"></script>
+</body>
+</html>

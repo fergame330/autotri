@@ -502,6 +502,8 @@ function resetState() {
 
 function initTheme() {
   const btn = document.getElementById("theme-toggle");
+  if (!btn || btn.dataset.ligado) return; // idempotente: o catálogo também chama
+  btn.dataset.ligado = "1";
   btn.addEventListener("click", () => {
     const atual = document.documentElement.getAttribute("data-theme");
     document.documentElement.setAttribute("data-theme", atual === "dark" ? "light" : "dark");
@@ -2614,7 +2616,9 @@ function renderResultado() {
 
 /* --------------------------------- Início -------------------------------- */
 
+/* `app` só existe na página da triagem. O catálogo (catalogo.html) carrega
+   este arquivo apenas pelas tabelas de dados, sem rodar a triagem. */
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
-  resetState();
+  if (app) resetState();
 });
