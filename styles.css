@@ -747,6 +747,8 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
 .zona-baixa   { --zona: #b8890a; }
 .zona-moderada{ --zona: var(--upa); }
 .zona-alta    { --zona: var(--danger); }
+.zona-leve    { --zona: var(--upa); }
+.zona-grave   { --zona: var(--danger); }
 
 .termo-leitura { text-align: center; margin: 6px 0 18px; line-height: 1; }
 .termo-valor {
@@ -925,6 +927,156 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
 }
 .pa-campo input:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); border-color: var(--brand); }
 .pa-barra { font-size: 1.5rem; font-weight: 800; color: var(--muted); padding-bottom: 9px; }
+
+/* ----------------------- Oxímetro (SpO2 e FC) ---------------------------- */
+
+.oxi { margin: 2px 0 6px; }
+
+/* Corpo do aparelho: caixa clara com a tela escura dentro e a garra de dedo
+   embaixo. A tela é escura nos dois temas, como a de um oxímetro de verdade. */
+.oxi-corpo {
+  max-width: 300px;
+  margin: 0 auto 20px;
+  padding: 13px 13px 0;
+  border-radius: 22px 22px 14px 14px;
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+.oxi-tela {
+  border-radius: 12px;
+  padding: 11px 13px 6px;
+  background: radial-gradient(130% 120% at 50% 0%, #16242e, #0a1117 70%);
+  box-shadow: inset 0 1px 7px rgba(0, 0, 0, .65);
+}
+.oxi-tela .zona-normal { --oxi-cor: #37d67a; }
+.oxi-tela .zona-leve   { --oxi-cor: #ffc247; }
+.oxi-tela .zona-grave  { --oxi-cor: #ff7a7a; }
+
+.oxi-numeros { display: flex; align-items: flex-end; gap: 10px; }
+.oxi-medida { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.oxi-medida + .oxi-medida { text-align: right; align-items: flex-end; }
+
+.oxi-rot {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #8aa0b0;
+  margin-bottom: -2px;
+}
+
+/* O número é o próprio campo: clicar nele já digita. */
+.oxi-num {
+  width: 3.3ch;
+  font: inherit;
+  font-size: 2.3rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--oxi-cor, #37d67a);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--oxi-cor, #37d67a) 45%, transparent);
+  background: none;
+  border: 0;
+  border-bottom: 1.5px dashed rgba(138, 160, 176, .45);
+  border-radius: 0;
+  padding: 0 0 1px;
+  cursor: text;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.oxi-medida + .oxi-medida .oxi-num { text-align: right; }
+.oxi-num::-webkit-outer-spin-button,
+.oxi-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.oxi-num:focus { outline: none; border-bottom-style: solid; border-bottom-color: var(--oxi-cor, #37d67a); }
+
+/* Curva dos batimentos: periódica, deslocada por exatamente uma batida. */
+.oxi-onda { display: block; width: 100%; height: 56px; margin-top: 2px; overflow: hidden; }
+.oxi-onda path {
+  fill: none;
+  stroke: var(--oxi-cor, #37d67a);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--oxi-cor, #37d67a) 55%, transparent));
+}
+#oxi-onda-g { animation: oxi-rola var(--oxi-periodo, .8s) linear infinite; }
+@keyframes oxi-rola {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(var(--oxi-largura, 48px) * -1)); }
+}
+
+/* Garra onde entra o dedo. */
+.oxi-garra {
+  height: 26px;
+  margin: 10px -13px 0;
+  border-radius: 0 0 13px 13px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
+  border-top: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+}
+.oxi-garra span {
+  width: 72px;
+  height: 13px;
+  border-radius: var(--r-full);
+  background: var(--bg);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, .25);
+}
+
+/* Réguas de tracinhos, coloridas pela faixa a que cada valor pertence. */
+.oxi-controle + .oxi-controle { margin-top: 18px; }
+
+.oxi-ctrl-topo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+.oxi-ctrl-rot {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+.oxi-ctrl-estado {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--zona, var(--text-soft));
+}
+
+.oxi-regua { position: relative; }
+.oxi-tracos { position: relative; height: 27px; }
+.oxi-traco {
+  position: absolute;
+  bottom: 0;
+  width: 1.5px;
+  height: 6px;
+  transform: translateX(-50%);
+  background: var(--zona, var(--border-strong));
+  opacity: .33;
+  border-radius: 1px;
+}
+.oxi-traco.maior { height: 11px; width: 2px; opacity: .9; }
+.oxi-traco b {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding-bottom: 2px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--zona, var(--muted));
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #oxi-onda-g { animation: none; }
+}
 
 /* --------------------- Altura (personagem + régua) ------------------------ */
 

@@ -400,6 +400,7 @@ function tabelaSintomas(cat) {
       const marcas = [];
       if (item.painel === "febre") marcas.push(selinho("termômetro", "medicao"));
       if (item.painel === "pressao") marcas.push(selinho("manômetro", "medicao"));
+      if (item.painel === "oximetro") marcas.push(selinho("oxímetro", "medicao"));
 
       const cabeca = (n) =>
         `<th rowspan="${n}" scope="rowgroup"><span class="sintoma-nome">${esc(item.label)}</span>
@@ -473,6 +474,58 @@ function faixasTemperatura() {
     else faixas.push({ ini: t, fim: t, rotulo: c.rotulo, indice: c.indice, zona: c.zona });
   }
   return faixas;
+}
+
+/* Agrupa valores inteiros consecutivos que caem na mesma classificação —
+   as faixas saem da função que a triagem usa, não de uma cópia. */
+function faixasNumericas(min, max, classifica) {
+  const faixas = [];
+  for (let v = min; v <= max; v++) {
+    const c = classifica(v);
+    const ultima = faixas[faixas.length - 1];
+    if (ultima && ultima.rotulo === c.rotulo && ultima.indice === c.indice) ultima.fim = v;
+    else faixas.push({ ini: v, fim: v, rotulo: c.rotulo, indice: c.indice, zona: c.zona });
+  }
+  return faixas;
+}
+
+function tabelaFaixas(itemId, min, max, classifica, unidade, cabecalho) {
+  const item = itemSintoma(itemId);
+  const linhas = faixasNumericas(min, max, classifica)
+    .map((f) => {
+      const opt = item.sub.options[f.indice];
+      const faixa =
+        f.ini === min
+          ? `${f.fim}${unidade} ou menos`
+          : f.fim === max
+          ? `${f.ini}${unidade} ou mais`
+          : `${f.ini} a ${f.fim}${unidade}`;
+      const extra = opt.casa ? `<span class="obs">sozinha: ${selo("casa")}</span>` : "";
+      return `<tr><td class="cod">${esc(faixa)}</td><td>${esc(f.rotulo)}</td>
+        <td class="cod"><code>${opt.code.join(",")}</code></td>
+        <td>${selo(destinoDeCodigo(opt.code))}${extra}</td></tr>`;
+    })
+    .join("");
+
+  return `
+    <div class="rolagem">
+      <table class="tbl">
+        <thead><tr><th>${esc(cabecalho)}</th><th>Classificação</th><th>Código</th><th>Encaminhamento</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>`;
+}
+
+function secaoOximetro() {
+  return `
+  <div class="cat">
+    <h3>Oxímetro — saturação e frequência cardíaca</h3>
+    <p class="sub">Um aparelho só para os dois sintomas: medir por qualquer um deles grava a mesma leitura nos dois, e os dois ficam marcados. Quem escolhe “não consegui medir” fica na última resposta dos dois, que não encaminha por si só.</p>
+    <h4>Saturação de oxigênio (SpO2)</h4>
+    ${tabelaFaixas("spo2", SPO2_MIN, SPO2_MAX, classificaSpo2, "%", "Saturação")}
+    <h4>Frequência cardíaca (FC)</h4>
+    ${tabelaFaixas("frequencia_cardiaca", FC_MIN, FC_MAX, classificaFc, " bpm", "Frequência")}
+  </div>`;
 }
 
 function secaoFebre() {
@@ -576,7 +629,7 @@ function secaoPressao() {
   return `
   <div class="cat">
     <h3>Manômetro — pressão arterial</h3>
-    <p class="sub">A pressão não tem código próprio: qualquer resposta do sintoma vale <code>0</code>. O que muda o encaminhamento são as combinações de pressão listadas adiante, e só quando a pessoa <b>não</b> tem hipertensão no histórico. Uma leitura normal, se for a única marcação da triagem, leva a ${selo("casa")}. Uma leitura atinge um patamar quando a sistólica <b>ou</b> a diastólica alcança o valor de referência — o pior dos dois eixos manda.</p>
+    <p class="sub">A pressão não tem código próprio: qualquer resposta do sintoma vale <code>0</code>. O que muda o encaminhamento são as combinações de pressão listadas adiante, e só quando a pessoa <b>não</b> tem hipertensão no histórico. Uma leitura normal, se for a única marcação da triagem, leva a cuidado em casa. Uma leitura atinge um patamar quando a sistólica <b>ou</b> a diastólica alcança o valor de referência — o pior dos dois eixos manda.</p>
 
     ${tabelaPatamares("Até 1 ano", patamaresDe([["pre-hipertensão", neo.base], ["hipertensão", neo.hiper]]))}
 
@@ -610,8 +663,9 @@ function secaoMedicoes() {
   return `
   <section class="bloco" id="medicoes" data-referencia>
     <h2>Medições</h2>
-    <p class="sub">Dois sintomas abrem uma medição no lugar das opções escritas.</p>
+    <p class="sub">Alguns sintomas abrem uma medição no lugar das opções escritas. A leitura escolhe sozinha a resposta do sintoma.</p>
     ${secaoFebre()}
+    ${secaoOximetro()}
     ${secaoPressao()}
   </section>`;
 }
