@@ -986,6 +986,7 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
   cursor: text;
   -moz-appearance: textfield;
   appearance: textfield;
+  transition: color .45s ease, text-shadow .45s ease, border-bottom-color .45s ease;
 }
 .oxi-medida + .oxi-medida .oxi-num { text-align: right; }
 .oxi-num::-webkit-outer-spin-button,
@@ -1001,13 +1002,8 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
   stroke-linecap: round;
   stroke-linejoin: round;
   filter: drop-shadow(0 0 4px color-mix(in srgb, var(--oxi-cor, #37d67a) 55%, transparent));
+  transition: stroke .45s ease, filter .45s ease;
 }
-#oxi-onda-g { animation: oxi-rola var(--oxi-periodo, .8s) linear infinite; }
-@keyframes oxi-rola {
-  from { transform: translateX(0); }
-  to { transform: translateX(calc(var(--oxi-largura, 48px) * -1)); }
-}
-
 /* Garra onde entra o dedo. */
 .oxi-garra {
   height: 26px;
@@ -1047,6 +1043,7 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--zona, var(--text-soft));
+  transition: color .45s ease;
 }
 
 .oxi-regua { position: relative; }
@@ -1072,10 +1069,6 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
   font-weight: 700;
   color: var(--zona, var(--muted));
   font-variant-numeric: tabular-nums;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #oxi-onda-g { animation: none; }
 }
 
 /* --------------------- Altura (personagem + régua) ------------------------ */

@@ -2124,6 +2124,56 @@ const OXIMETRO_ITENS = ["spo2", "frequencia_cardiaca"];
 const OXI_JANELA_S = 4;
 const OXI_W = 240;
 const OXI_H = 56;
+const OXI_BASE = OXI_H - 7;
+const OXI_AMP = OXI_H - 17;
+/* Velocidade de varredura, em unidades por segundo. Constante: o que muda
+   com a frequência é quantas batidas cabem, não a rapidez do traçado. */
+const OXI_VEL = OXI_W / OXI_JANELA_S;
+
+/* `abertoMin` / `abertoMax` marcam as pontas que significam "ou menos" e
+   "ou mais" — um oxímetro pode mostrar valor fora da régua, e a ponta é
+   onde ele é registrado. A saturação não passa de 100%, então só a ponta
+   de baixo é aberta. */
+const ESCALAS_OXI = {
+  spo2: {
+    rotulo: "SpO2",
+    aria: "Saturação de oxigênio, em porcentagem",
+    unidade: "%",
+    min: SPO2_MIN,
+    max: SPO2_MAX,
+    passo: 1,
+    rotulos: [70, 80, 90, 94, 100],
+    abertoMin: true,
+    abertoMax: false,
+    classifica: (v) => classificaSpo2(v),
+  },
+  fc: {
+    rotulo: "Frequência cardíaca",
+    aria: "Frequência cardíaca, em batimentos por minuto",
+    unidade: " bpm",
+    min: FC_MIN,
+    max: FC_MAX,
+    passo: 5,
+    rotulos: [20, 40, 60, 100, 140, 220],
+    abertoMin: true,
+    abertoMax: true,
+    classifica: (v) => classificaFc(v),
+  },
+};
+
+/* Rótulo de um valor da escala: "70-" e "220+" nas pontas abertas. */
+function oxiRotuloEscala(esc, v) {
+  if (esc.abertoMin && v === esc.min) return `${v}-`;
+  if (esc.abertoMax && v === esc.max) return `${v}+`;
+  return String(v);
+}
+
+/* O mesmo, por extenso, para o resumo mostrado no item e no fim. */
+function oxiTextoValor(esc, v) {
+  if (esc.abertoMin && v <= esc.min) return `${esc.min}${esc.unidade} ou menos`;
+  if (esc.abertoMax && v >= esc.max) return `${esc.max}${esc.unidade} ou mais`;
+  return `${v}${esc.unidade}`;
+}
 
 function sintomaPorId(id) {
   for (const cat of SYMPTOM_CATEGORIES) {
@@ -2204,44 +2254,48 @@ function oxiBatidaPath(x, w, base, amp) {
    então ele precisa ser desenhado além da borda direita para emendar.
    Largura/período é constante, ou seja, a varredura corre sempre na mesma
    velocidade — o que muda com a frequência é quantas batidas cabem. */
-function oxiOnda(fc) {
-  const batimentos = Math.max(1, (fc / 60) * OXI_JANELA_S);
-  const largura = OXI_W / batimentos;
-  const base = OXI_H - 7;
-  const amp = OXI_H - 17;
+function oxiLarguraBatida(fc) {
+  return OXI_W / Math.max(1, (fc / 60) * OXI_JANELA_S);
+}
 
+/* Traçado uniforme, usado quando o movimento está desligado no sistema. */
+function oxiOnda(fc) {
+  const largura = oxiLarguraBatida(fc);
   let d = "";
-  for (let i = 0; i < Math.ceil(batimentos) + 2; i++) d += oxiBatidaPath(i * largura, largura, base, amp);
+  for (let i = 0; i < Math.ceil(OXI_W / largura) + 2; i++) {
+    d += oxiBatidaPath(i * largura, largura, OXI_BASE, OXI_AMP);
+  }
   return { d, largura, periodo: 60 / fc };
 }
 
-function oxiMarcasHtml(min, max, passo, rotulos, classifica) {
+function oxiMarcasHtml(esc) {
   const marcas = [];
-  for (let v = min; v <= max; v += passo) {
-    const p = ((v - min) / (max - min)) * 100;
-    const maior = rotulos.includes(v);
+  for (let v = esc.min; v <= esc.max; v += esc.passo) {
+    const p = ((v - esc.min) / (esc.max - esc.min)) * 100;
+    const maior = esc.rotulos.includes(v);
     marcas.push(
-      `<i class="oxi-traco zona-${classifica(v).zona}${maior ? " maior" : ""}" style="left:${p.toFixed(3)}%">` +
-        `${maior ? `<b>${v}</b>` : ""}</i>`
+      `<i class="oxi-traco zona-${esc.classifica(v).zona}${maior ? " maior" : ""}" style="left:${p.toFixed(3)}%">` +
+        `${maior ? `<b>${oxiRotuloEscala(esc, v)}</b>` : ""}</i>`
     );
   }
   return marcas.join("");
 }
 
-function oxiControleHtml(cfg) {
-  const fill = ((cfg.valor - cfg.min) / (cfg.max - cfg.min)) * 100;
-  const cls = cfg.classifica(cfg.valor);
+function oxiControleHtml(chave, valor) {
+  const esc = ESCALAS_OXI[chave];
+  const fill = ((valor - esc.min) / (esc.max - esc.min)) * 100;
+  const cls = esc.classifica(valor);
   return `
     <div class="oxi-controle">
       <div class="oxi-ctrl-topo">
-        <span class="oxi-ctrl-rot">${cfg.rotulo}</span>
-        <span class="oxi-ctrl-estado zona-${cls.zona}" id="oxi-est-${cfg.chave}">${cls.rotulo}</span>
+        <span class="oxi-ctrl-rot">${esc.rotulo}</span>
+        <span class="oxi-ctrl-estado zona-${cls.zona}" id="oxi-est-${chave}">${cls.rotulo}</span>
       </div>
       <div class="oxi-regua">
-        <div class="oxi-tracos">${oxiMarcasHtml(cfg.min, cfg.max, cfg.passo, cfg.rotulos, cfg.classifica)}</div>
-        <input type="range" class="oxi-range" id="oxi-range-${cfg.chave}"
-               min="${cfg.min}" max="${cfg.max}" step="1" value="${cfg.valor}"
-               style="--fill:${fill.toFixed(2)}%" aria-label="${cfg.aria}" />
+        <div class="oxi-tracos">${oxiMarcasHtml(esc)}</div>
+        <input type="range" class="oxi-range" id="oxi-range-${chave}"
+               min="${esc.min}" max="${esc.max}" step="1" value="${valor}"
+               style="--fill:${fill.toFixed(2)}%" aria-label="${esc.aria}" />
       </div>
     </div>`;
 }
@@ -2275,7 +2329,7 @@ function painelOximetroHtml(item) {
 
           <svg class="oxi-onda zona-${cf.zona}" id="oxi-onda" viewBox="0 0 ${OXI_W} ${OXI_H}"
                preserveAspectRatio="none" aria-hidden="true">
-            <g id="oxi-onda-g" style="--oxi-largura:${onda.largura.toFixed(2)}px; --oxi-periodo:${onda.periodo.toFixed(3)}s">
+            <g id="oxi-onda-g">
               <path id="oxi-onda-path" d="${onda.d}" />
             </g>
           </svg>
@@ -2283,29 +2337,8 @@ function painelOximetroHtml(item) {
         <div class="oxi-garra" aria-hidden="true"><span></span></div>
       </div>
 
-      ${oxiControleHtml({
-        chave: "spo2",
-        rotulo: "SpO2",
-        aria: "Saturação de oxigênio, em porcentagem",
-        min: SPO2_MIN,
-        max: SPO2_MAX,
-        passo: 1,
-        rotulos: [70, 80, 90, 94, 100],
-        valor: oxi.spo2,
-        classifica: classificaSpo2,
-      })}
-
-      ${oxiControleHtml({
-        chave: "fc",
-        rotulo: "Frequência cardíaca",
-        aria: "Frequência cardíaca, em batimentos por minuto",
-        min: FC_MIN,
-        max: FC_MAX,
-        passo: 5,
-        rotulos: [20, 40, 60, 100, 140, 220],
-        valor: oxi.fc,
-        classifica: classificaFc,
-      })}
+      ${oxiControleHtml("spo2", oxi.spo2)}
+      ${oxiControleHtml("fc", oxi.fc)}
     </div>
 
     <button class="btn subtle" type="button" data-modo="opcoes">Não consegui medir</button>`;
@@ -2328,6 +2361,7 @@ function ligaPainelOximetro(item) {
 
   const limita = (v, min, max) => Math.min(max, Math.max(min, v));
   const pct = (v, min, max) => (((v - min) / (max - min)) * 100).toFixed(2) + "%";
+  const semMovimento = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // `origem` diz quem disparou, para não sobrescrever o campo em digitação.
   const redesenha = (origem) => {
@@ -2349,14 +2383,78 @@ function ligaPainelOximetro(item) {
     estFc.textContent = cf.rotulo;
     estFc.className = "oxi-ctrl-estado zona-" + cf.zona;
 
-    const onda = oxiOnda(oxi.fc);
-    traco.setAttribute("d", onda.d);
-    grupoOnda.style.setProperty("--oxi-largura", onda.largura.toFixed(2) + "px");
-    grupoOnda.style.setProperty("--oxi-periodo", onda.periodo.toFixed(3) + "s");
     svgOnda.setAttribute("class", "oxi-onda zona-" + cf.zona);
+    if (semMovimento) traco.setAttribute("d", oxiOnda(oxi.fc).d);
 
     gravaOximetro(oxi);
   };
+
+  /* ---------------------------- Traçado rolante -------------------------
+     Cada batida guarda a largura que a frequência tinha quando ela entrou
+     na tela. Mudar a FC só afeta as batidas que entram depois — as que já
+     estão desenhadas continuam com o espaçamento antigo, como num monitor
+     de verdade. O traçado rola sempre na mesma velocidade. */
+
+  let batidas = [];
+  let fimTracado = 0; // x da borda direita da última batida criada
+  let rolagem = 0; // quanto o traçado já correu, em unidades do viewBox
+
+  /* Completa à direita e descarta o que saiu pela esquerda.
+     Devolve true quando a lista mudou e o caminho precisa ser refeito. */
+  const completaTracado = () => {
+    let mudou = false;
+
+    while (fimTracado < rolagem + OXI_W + 1) {
+      const largura = oxiLarguraBatida(oxi.fc);
+      batidas.push({ x: fimTracado, largura });
+      fimTracado += largura;
+      mudou = true;
+    }
+
+    const primeiraVisivel = batidas.findIndex((b) => b.x + b.largura > rolagem);
+    if (primeiraVisivel > 0) {
+      batidas = batidas.slice(primeiraVisivel);
+      mudou = true;
+    }
+
+    // Reancora de vez em quando, para os números não crescerem sem fim.
+    if (batidas.length && batidas[0].x > 1e4) {
+      const base = batidas[0].x;
+      batidas.forEach((b) => (b.x -= base));
+      fimTracado -= base;
+      rolagem -= base;
+      mudou = true;
+    }
+
+    return mudou;
+  };
+
+  const refazTracado = () => {
+    traco.setAttribute("d", batidas.map((b) => oxiBatidaPath(b.x, b.largura, OXI_BASE, OXI_AMP)).join(""));
+  };
+
+  let quadroAnterior = null;
+
+  const quadro = (t) => {
+    // O painel foi fechado ou refeito: o laço morre junto com o elemento.
+    if (!document.contains(svgOnda)) return;
+
+    if (quadroAnterior != null) {
+      // Limita o salto de quando a aba fica em segundo plano.
+      rolagem += Math.min((t - quadroAnterior) / 1000, 0.25) * OXI_VEL;
+    }
+    quadroAnterior = t;
+
+    if (completaTracado()) refazTracado();
+    grupoOnda.setAttribute("transform", `translate(${(-rolagem).toFixed(2)} 0)`);
+    requestAnimationFrame(quadro);
+  };
+
+  if (!semMovimento) {
+    completaTracado();
+    refazTracado();
+    requestAnimationFrame(quadro);
+  }
 
   rgSpo2.addEventListener("input", () => {
     oxi.spo2 = Number(rgSpo2.value);
@@ -2412,8 +2510,8 @@ function resumoMedicao(item) {
   }
   if (item.painel === "oximetro" && st.oxi) {
     return item.id === "spo2"
-      ? `${st.oxi.spo2}% · ${classificaSpo2(st.oxi.spo2).rotulo}`
-      : `${st.oxi.fc} bpm · ${classificaFc(st.oxi.fc).rotulo}`;
+      ? `${oxiTextoValor(ESCALAS_OXI.spo2, st.oxi.spo2)} · ${classificaSpo2(st.oxi.spo2).rotulo}`
+      : `${oxiTextoValor(ESCALAS_OXI.fc, st.oxi.fc)} · ${classificaFc(st.oxi.fc).rotulo}`;
   }
   if (item.painel === "pressao" && st.pressao) {
     let txt = `${st.pressao.max} / ${st.pressao.min} mmHg`;
