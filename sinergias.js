@@ -28,6 +28,7 @@ const GRAVE = {
   sangramento_vaginal_peniano: [1, 2], // doloroso e/ou muito sangue | não sei
   alteracao_visual: [0], // perda súbita da visão
   vomito_sangue: [0, 1, 3], // vômito com sangue/fezes pretas | muito sangue vivo | não sei
+  perda_apetite: [1, 2], // quase não come e/ou não bebe | não sei
 };
 
 /* Agrupamentos reaproveitados por várias regras. */
@@ -359,6 +360,13 @@ const SINERGIAS = [
     quando: (c) => c.cond("diabetes") && c.sym("nausea_vomito") && c.sym("dor_barriga"),
   },
   {
+    id: "apetite_diabetes",
+    nivel: "upa",
+    titulo: "Diabetes + quase não come",
+    porque: "Sem se alimentar, dá hipoglicemia em quem usa medicação e desidratação com descompensação nos demais.",
+    quando: (c) => c.cond("diabetes") && c.symGrave("perda_apetite"),
+  },
+  {
     id: "corticoide_estresse",
     nivel: "upa",
     titulo: "Corticoide crônico ou insuficiência adrenal + vômito, diarreia ou febre",
@@ -568,6 +576,21 @@ const SINERGIAS = [
     quando: (c) => c.sym("alteracao_consciencia") && c.algumSym(["suando", "palpitacao"]),
   },
   {
+    id: "apetite_desidratacao",
+    nivel: "upa",
+    titulo: "Quase não come nem bebe + vômito ou diarreia",
+    porque: "Sem entrada de líquido e com perda em curso, a desidratação se instala em poucas horas.",
+    quando: (c) => c.symGrave("perda_apetite") && c.algumSym(["nausea_vomito", "diarreia"]),
+  },
+  {
+    id: "apetite_ictericia",
+    nivel: "upa",
+    titulo: "Perda de apetite + pele amarelada",
+    porque: "A dupla sugere problema ativo no fígado, na vesícula ou no pâncreas.",
+    quando: (c) => c.sym("perda_apetite") && c.sym("pele_amarelada"),
+  },
+
+  {
     id: "hipoglicemia_neuro",
     nivel: "samu_hospital",
     titulo: "Glicose abaixo de 70 + confusão, sonolência ou convulsão",
@@ -656,10 +679,11 @@ const SINERGIAS = [
   {
     id: "neonato_sinal_alarme",
     nivel: "hospital",
-    titulo: "Recém-nascido + febre, vômito ou diarreia",
-    porque: "No período neonatal, esses sinais podem indicar infecção grave e desidratam rápido.",
+    titulo: "Recém-nascido + febre, vômito, diarreia, pele amarelada ou perda de apetite",
+    porque: "No período neonatal, esses sinais podem indicar infecção grave e desidratam rápido; mamar menos costuma ser o primeiro sinal.",
     quando: (c) =>
-      c.subpopulacao === "neonatal" && c.algumSym(["febre_hipotermia", "nausea_vomito", "diarreia", "pele_amarelada"]),
+      c.subpopulacao === "neonatal" &&
+      c.algumSym(["febre_hipotermia", "nausea_vomito", "diarreia", "pele_amarelada", "perda_apetite"]),
   },
   {
     id: "lactente_jovem_febre",
@@ -708,6 +732,20 @@ const SINERGIAS = [
       c.puerperio === "imediato" &&
       c.symGrave("sangramento_vaginal_peniano") &&
       c.algumSym(["tontura", "desmaio", "alteracao_consciencia"]),
+  },
+  {
+    id: "apetite_crianca",
+    nivel: "upa",
+    titulo: "Criança + quase não come nem bebe",
+    porque: "A reserva de água e de açúcar da criança é pequena: desidrata e tem queda de glicose bem antes de um adulto.",
+    quando: (c) => c.populacao === "crianca_clinica" && c.symGrave("perda_apetite"),
+  },
+  {
+    id: "apetite_idoso",
+    nivel: "upa",
+    titulo: "Idoso + quase não come nem bebe",
+    porque: "No idoso parar de comer costuma ser o primeiro sinal de infecção ou descompensação, muitas vezes sem febre.",
+    quando: (c) => c.populacao === "idoso_clinico" && c.symGrave("perda_apetite"),
   },
   {
     id: "gestante_preeclampsia",

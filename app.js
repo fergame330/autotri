@@ -265,6 +265,17 @@ const SYMPTOM_CATEGORIES = [
         },
       },
       {
+        id: "perda_apetite",
+        label: "Perda de apetite",
+        sub: {
+          options: [
+            { label: "Come menos que o normal, mas segue comendo e bebendo", code: [0] },
+            { label: "Quase não come há dias e/ou não consegue beber líquidos", code: [1] },
+            { label: "Não sei", code: [1] },
+          ],
+        },
+      },
+      {
         id: "diarreia",
         label: "Diarreia",
         sub: {
