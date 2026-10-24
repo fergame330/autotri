@@ -380,7 +380,7 @@
 }
 .req-negado { border-color: var(--danger); }
 
-.chip {
+.req-chip {
   display: block;
   font-size: 0.8rem;
   line-height: 1.4;
@@ -390,7 +390,7 @@
   background: var(--surface);
   padding: 6px 10px;
 }
-.chip b {
+.req-chip b {
   display: block;
   font-size: 0.66rem;
   font-weight: 800;
@@ -398,28 +398,28 @@
   letter-spacing: 0.05em;
   color: var(--muted);
 }
-.chip i {
+.req-chip i {
   display: block;
   font-style: normal;
   font-size: 0.74rem;
   color: var(--muted);
   margin-top: 2px;
 }
-.chip code {
+.req-chip code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.76rem;
   word-break: break-word;
 }
 
-.chip-sintoma   { border-left-color: var(--brand); }
-.chip-historico { border-left-color: var(--police); }
-.chip-perfil    { border-left-color: var(--cvv); }
-.chip-pressao   { border-left-color: var(--upa); }
-.chip-fluxo     { border-left-color: var(--muted); }
-.chip-bruto     { border-left-color: var(--danger); }
+.req-chip-sintoma   { border-left-color: var(--brand); }
+.req-chip-historico { border-left-color: var(--police); }
+.req-chip-perfil    { border-left-color: var(--cvv); }
+.req-chip-pressao   { border-left-color: var(--upa); }
+.req-chip-fluxo     { border-left-color: var(--muted); }
+.req-chip-bruto     { border-left-color: var(--danger); }
 
-.chip-nao { border-left-style: dashed; border-left-color: var(--danger); }
-.chip-nao b { color: var(--danger); }
+.req-chip-nao { border-left-style: dashed; border-left-color: var(--danger); }
+.req-chip-nao b { color: var(--danger); }
 
 .req-falha { margin: 0; }
 

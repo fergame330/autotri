@@ -372,6 +372,15 @@ const SINERGIAS = [
     quando: (c) => c.sym("alteracao_consciencia") && c.algumSym(["suando", "palpitacao"]),
   },
 
+  {
+    id: "hipoglicemia_sintomatica",
+    nivel: "upa",
+    titulo: "Glicose baixa + tontura + sudorese + alteração de consciência",
+    porque: "Conjunto compatível com hipoglicemia sintomática, que piora rápido sem correção.",
+    quando: (c) =>
+      c.sym("glicose", [1]) && c.sym("tontura") && c.sym("suando") && c.sym("alteracao_consciencia"),
+  },
+
   /* ---------- Perfil × sintoma ---------- */
   {
     id: "neonato_sinal_alarme",

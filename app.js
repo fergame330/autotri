@@ -67,6 +67,20 @@ const SYMPTOM_CATEGORIES = [
           ],
         },
       },
+      {
+        id: "glicose",
+        label: "Glicose (glicemia)",
+        painel: "glicose",
+        sub: {
+          options: [
+            { label: "Dentro do esperado para a faixa", code: [0], casa: true },
+            { label: "Abaixo de 70 mg/dL — hipoglicemia", code: [0] },
+            { label: "Acima do esperado para a faixa", code: [0] },
+            { label: "Bem acima do esperado para a faixa", code: [0] },
+            { label: "Não consegui medir", code: [0] },
+          ],
+        },
+      },
       { id: "cansaco_muscular", label: "Cansaço muscular", code: [0] },
       { id: "perda_peso", label: "Perda de peso não intencional", code: [0] },
       {
@@ -521,10 +535,11 @@ function freshState() {
     // pode mudar o encaminhamento, e nunca repete um bloco já respondido.
     idadeRespondida: false,
     generoRespondido: false,
+    diabetesRespondida: false,
     alturaRespondida: false,
     comorbidadesRespondidas: false,
     // Para onde voltar quando um bloco de perfil termina.
-    retomar: null, // null (triagem) | { tipo:"pressao", parte, itemId }
+    retomar: null, // null (triagem) | { tipo:"painel", painel, parte, itemId }
   };
 }
 
@@ -607,6 +622,27 @@ function pendenciaPressao() {
   return null;
 }
 
+/* O glicosímetro precisa da faixa etária, de saber se há gestação e do
+   diagnóstico prévio de diabetes — os três mudam a tabela de referência.
+   Quem já respondeu o histórico de saúde não precisa repetir a diabetes. */
+function pendenciaGlicose() {
+  if (!state.idadeRespondida) return "idade";
+  if (!state.generoRespondido) return "sexo";
+  if (!state.diabetesRespondida && !state.comorbidadesRespondidas) return "diabetes";
+  return null;
+}
+
+/* Cada painel de medição diz o que precisa saber antes de abrir. */
+const PENDENCIA_PAINEL = {
+  pressao: pendenciaPressao,
+  glicose: pendenciaGlicose,
+};
+
+function pendenciaDoPainel(painel) {
+  const f = PENDENCIA_PAINEL[painel];
+  return f ? f() : null;
+}
+
 /* Sobe um degrau: pergunta o próximo bloco que ainda pode mudar o destino. */
 function avancaTriagem() {
   const r = computeResultado();
@@ -622,8 +658,8 @@ function avancaTriagem() {
 function retomaContexto() {
   const ctx = state.retomar;
 
-  if (ctx && ctx.tipo === "pressao") {
-    const falta = pendenciaPressao();
+  if (ctx && ctx.tipo === "painel") {
+    const falta = pendenciaDoPainel(ctx.painel);
     if (falta) return go(falta);
     state.retomar = null;
     return reabrePainel(ctx);
@@ -659,6 +695,7 @@ const STEP_META = {
   suspeita_gravidez: { fase: "Perfil", pct: 76 },
   lactante: { fase: "Perfil", pct: 79 },
   altura: { fase: "Perfil", pct: 82 },
+  diabetes: { fase: "Perfil", pct: 85 },
   comorbidades: { fase: "Histórico de saúde", pct: 92 },
 };
 
@@ -748,6 +785,7 @@ function render() {
     suspeita_gravidez: renderSuspeitaGravidez,
     lactante: renderLactante,
     altura: renderAltura,
+    diabetes: renderDiabetes,
     comorbidades: renderComorbidades,
     sintomas: renderSintomas,
     resultado: renderResultado,
@@ -1405,6 +1443,7 @@ function ligaItem(node, item, kind, categories) {
       store[item.id].medida = null;
       store[item.id].pressao = null;
       store[item.id].oxi = null;
+      store[item.id].glicose = null;
       store[item.id].modo = "medir";
       store[item.id].subEtapa = "medida";
       store[item.id].alterada = null;
@@ -1453,6 +1492,42 @@ function ligaAcordeao(categories, kind) {
 }
 
 /* --------------------------- 4. Histórico de saúde ----------------------- */
+
+/* --------------------------- Diabetes (glicemia) ------------------------- */
+/* Perguntada antes do glicosímetro, porque a faixa esperada de glicose é
+   outra para quem tem o diagnóstico. A resposta já entra no histórico de
+   saúde: ao chegar lá, a pessoa encontra a diabetes marcada. */
+
+function renderDiabetes() {
+  app.appendChild(
+    h(`
+    ${progressHtml()}
+    <div class="card">
+      ${backHtml()}
+      <p class="question">Você tem diabetes?</p>
+      <p class="hint">A faixa esperada de glicose é diferente para quem já tem o diagnóstico. Esta resposta já fica marcada no histórico de saúde, mais adiante.</p>
+      <div class="options">
+        <button class="btn" type="button" data-v="sim">Sim</button>
+        <button class="btn" type="button" data-v="nao">Não</button>
+        <button class="btn subtle" type="button" data-v="nao_sei">Não sei</button>
+      </div>
+    </div>
+  `)
+  );
+
+  app.querySelectorAll("[data-v]").forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.v === "sim") {
+        const st = state.comorbidades.diabetes || { checked: false, extraValue: null };
+        st.checked = true;
+        state.comorbidades.diabetes = st;
+      }
+      state.diabetesRespondida = true;
+      retomaContexto();
+    };
+  });
+  wireBack();
+}
 
 function renderComorbidades() {
   app.appendChild(
@@ -1522,6 +1597,7 @@ const PAINEIS = {
   febre: { titulo: "Temperatura", montaHtml: painelFebreHtml, liga: ligaPainelFebre },
   pressao: { titulo: "Pressão arterial", montaHtml: painelPressaoHtml, liga: ligaPainelPressao },
   oximetro: { titulo: "Oxímetro", montaHtml: painelOximetroHtml, liga: ligaPainelOximetro },
+  glicose: { titulo: "Glicosímetro", montaHtml: painelGlicoseHtml, liga: ligaPainelGlicose },
 };
 
 function estadoItem(id) {
@@ -1532,6 +1608,7 @@ function estadoItem(id) {
       medida: null,
       pressao: null,
       oxi: null, // oxímetro: { spo2, fc }
+      glicose: null, // glicosímetro: { valor, momento }
       modo: "medir",
       subEtapa: "medida", // pressão: "medida" | "confundidores"
       alterada: null, // pressão: true/false depois da pergunta de fatores de alteração
@@ -1574,12 +1651,10 @@ function animaAlturaSlide(wrapEl, de, para, aoFim) {
    sintomas para perguntar e volta ao painel depois. Blocos já respondidos
    em outro momento da triagem não são pedidos de novo. */
 function abrePainelOuPerfil(item) {
-  if (item.painel === "pressao") {
-    const falta = pendenciaPressao();
-    if (falta) {
-      state.retomar = { tipo: "pressao", parte: state.sintomaParte, itemId: item.id };
-      return go(falta);
-    }
+  const falta = pendenciaDoPainel(item.painel);
+  if (falta) {
+    state.retomar = { tipo: "painel", painel: item.painel, parte: state.sintomaParte, itemId: item.id };
+    return go(falta);
   }
   abrePainel(item);
 }
@@ -2490,6 +2565,251 @@ function ligaPainelOximetro(item) {
   };
 }
 
+/* ------------------------ Painel: glicosímetro --------------------------- */
+
+const GLIC_MIN = 0;
+const GLIC_MAX = 300;
+const GLIC_PADRAO = 95;
+const GLIC_BAIXA = 70; // abaixo disso é hipoglicemia, em qualquer faixa
+const GLIC_ROTULOS = [0, 70, 140, 210, 300];
+
+/* Gota de sangue: ponta em cima, barriga redonda embaixo. */
+const GLIC_GOTA = "M55 6C55 6 103 66 103 100A48 48 0 1 1 7 100C7 66 55 6 55 6Z";
+const GLIC_GOTA_TOPO = 6;
+const GLIC_GOTA_BASE = 148;
+
+const GLICOSE_MOMENTOS = { jejum: "Em jejum", poscomer: "2 h depois de comer" };
+
+/* Limites de glicemia em mg/dL, por faixa etária, momento da medição e
+   diagnóstico prévio de diabetes.
+     alvo   = maior valor ainda dentro do esperado
+     alerta = valor a partir do qual a leitura é "bem acima"; null quando a
+              tabela de referência não traz um segundo corte para o caso. */
+const GLICOSE_TABELA = {
+  crianca_adolescente: {
+    rotulo: "Crianças e adolescentes",
+    jejum: { sem: { alvo: 100, alerta: 126 }, com: { alvo: 125, alerta: null } },
+    poscomer: { sem: { alvo: 139, alerta: null }, com: { alvo: 180, alerta: null } },
+  },
+  adulto: {
+    rotulo: "Adultos",
+    jejum: { sem: { alvo: 99, alerta: 126 }, com: { alvo: 125, alerta: null } },
+    poscomer: { sem: { alvo: 139, alerta: null }, com: { alvo: 179, alerta: 200 } },
+  },
+  idoso: {
+    rotulo: "Idosos",
+    jejum: { sem: { alvo: 110, alerta: 126 }, com: { alvo: 125, alerta: null } },
+    poscomer: { sem: { alvo: 139, alerta: null }, com: { alvo: 180, alerta: null } },
+  },
+  /* Na gestação a referência é a mesma com ou sem diagnóstico: são as metas
+     do pré-natal, e é justamente ultrapassá-las que caracteriza a diabetes
+     gestacional. */
+  gestante: {
+    rotulo: "Gestantes",
+    jejum: { sem: { alvo: 91, alerta: 92 }, com: { alvo: 91, alerta: null } },
+    poscomer: { sem: { alvo: 119, alerta: null }, com: { alvo: 119, alerta: null } },
+  },
+};
+
+/* Reaproveita as faixas etárias da própria triagem, para não existirem duas
+   definições de "adolescente" no mesmo código. */
+function bandaGlicose() {
+  if (state.subpopulacao === "gravida") return "gestante";
+  const pop = state.populacao;
+  if (pop === "crianca_clinica" || pop === "adolescente_clinico") return "crianca_adolescente";
+  if (pop === "idoso_clinico") return "idoso";
+  return "adulto"; // inclui idade "não sei"
+}
+
+function temDiabetes() {
+  const st = state.comorbidades.diabetes;
+  return !!(st && st.checked);
+}
+
+function glicoseLimites(momento) {
+  const chave = bandaGlicose();
+  const faixa = GLICOSE_TABELA[chave];
+  const com = temDiabetes();
+  const lim = faixa[momento][com ? "com" : "sem"];
+  return { chave, rotulo: faixa.rotulo, alvo: lim.alvo, alerta: lim.alerta, comDiabetes: com };
+}
+
+/* Classifica em uma das opções já existentes do sintoma. */
+function classificaGlicose(valor, momento) {
+  const lim = glicoseLimites(momento);
+  if (valor < GLIC_BAIXA) return { indice: 1, zona: "grave", rotulo: "Abaixo do esperado", lim };
+  if (valor <= lim.alvo) return { indice: 0, zona: "normal", rotulo: "Dentro do esperado", lim };
+  if (lim.alerta != null && valor >= lim.alerta) {
+    return { indice: 3, zona: "grave", rotulo: "Bem acima do esperado", lim };
+  }
+  return { indice: 2, zona: "leve", rotulo: "Acima do esperado", lim };
+}
+
+/* A classificação depende de idade, gestação e diabetes — e o histórico de
+   saúde pode ser editado depois da medição. Recalcula antes de usar, para a
+   resposta nunca ficar velha. */
+function sincronizaGlicose() {
+  const st = state.sintomas.glicose;
+  if (!st || !st.checked || !st.glicose) return;
+  st.subIndex = classificaGlicose(st.glicose.valor, st.glicose.momento).indice;
+}
+
+function glicoseEstado(item) {
+  const st = estadoItem(item.id);
+  if (!st.glicose) st.glicose = { valor: GLIC_PADRAO, momento: "jejum" };
+  return st;
+}
+
+function glicFracao(valor) {
+  return (valor - GLIC_MIN) / (GLIC_MAX - GLIC_MIN);
+}
+
+/* Topo do preenchimento da gota, em unidades do viewBox. */
+function glicTopoCheio(valor) {
+  return GLIC_GOTA_BASE - glicFracao(valor) * (GLIC_GOTA_BASE - GLIC_GOTA_TOPO);
+}
+
+function glicMarcasHtml() {
+  return GLIC_ROTULOS.map((v) => {
+    const p = glicFracao(v) * 100;
+    return `<div class="glic-marca" style="bottom:${p}%"><span>${v === GLIC_MAX ? GLIC_MAX + "+" : v}</span></div>`;
+  }).join("");
+}
+
+function glicEsperadoTexto(lim) {
+  return `Esperado para ${lim.rotulo.toLowerCase()}${lim.comDiabetes ? " com diabetes" : ""}: ${GLIC_BAIXA} a ${lim.alvo} mg/dL`;
+}
+
+function painelGlicoseHtml(item) {
+  const g = glicoseEstado(item).glicose;
+  const cls = classificaGlicose(g.valor, g.momento);
+  const topo = glicTopoCheio(g.valor);
+
+  return `
+    <p class="hint">Arraste a gota ou escreva o valor que apareceu no aparelho.</p>
+
+    <div class="glic">
+      <div class="glic-momento" role="group" aria-label="Momento da medição">
+        ${Object.entries(GLICOSE_MOMENTOS)
+          .map(
+            ([chave, rotulo]) =>
+              `<button type="button" data-momento="${chave}" class="${g.momento === chave ? "ativo" : ""}"
+                       aria-pressed="${g.momento === chave}">${rotulo}</button>`
+          )
+          .join("")}
+      </div>
+
+      <div class="glic-corpo">
+        <div class="glic-tela zona-${cls.zona}" id="glic-tela">
+          <div class="glic-leitura">
+            <input class="glic-num" id="glic-num" type="number" inputmode="numeric"
+                   min="${GLIC_MIN}" max="${GLIC_MAX}" step="1" value="${g.valor}"
+                   aria-label="Glicose, em miligramas por decilitro" />
+            <span class="glic-un">mg/dL</span>
+          </div>
+          <div class="glic-estado" id="glic-estado">${cls.rotulo}</div>
+        </div>
+
+        <div class="glic-medidor">
+          <div class="glic-marcas">${glicMarcasHtml()}</div>
+
+          <div class="glic-gota zona-${cls.zona}" id="glic-gota">
+            <svg viewBox="0 0 110 154" role="img" aria-hidden="true">
+              <defs>
+                <clipPath id="glic-recorte"><path d="${GLIC_GOTA}" /></clipPath>
+              </defs>
+              <path class="glic-gota-fundo" d="${GLIC_GOTA}" />
+              <g clip-path="url(#glic-recorte)">
+                <rect class="glic-gota-cheia" id="glic-cheia" x="0" width="110"
+                      y="${topo.toFixed(2)}" height="${(GLIC_GOTA_BASE - topo).toFixed(2)}" />
+              </g>
+              <path class="glic-gota-borda" d="${GLIC_GOTA}" />
+              <ellipse class="glic-gota-brilho" cx="38" cy="86" rx="11" ry="16" />
+            </svg>
+
+            <input type="range" class="glic-range" id="glic-range"
+                   min="${GLIC_MIN}" max="${GLIC_MAX}" step="1" value="${g.valor}"
+                   aria-label="Glicose, em miligramas por decilitro" />
+          </div>
+        </div>
+
+        <div class="glic-tira" aria-hidden="true"><span></span></div>
+      </div>
+
+      <p class="glic-ref" id="glic-ref">${glicEsperadoTexto(cls.lim)}</p>
+    </div>
+
+    <button class="btn subtle" type="button" data-modo="opcoes">Não consegui medir</button>`;
+}
+
+function ligaPainelGlicose(item) {
+  const st = glicoseEstado(item);
+  const g = st.glicose;
+
+  const num = app.querySelector("#glic-num");
+  const range = app.querySelector("#glic-range");
+  const gota = app.querySelector("#glic-gota");
+  const cheia = app.querySelector("#glic-cheia");
+  const tela = app.querySelector("#glic-tela");
+  const estado = app.querySelector("#glic-estado");
+  const ref = app.querySelector("#glic-ref");
+
+  const limita = (v) => Math.min(GLIC_MAX, Math.max(GLIC_MIN, v));
+
+  // `origem` diz quem disparou, para não sobrescrever o campo em digitação.
+  const redesenha = (origem) => {
+    const cls = classificaGlicose(g.valor, g.momento);
+
+    if (origem !== "campo") num.value = g.valor;
+    if (origem !== "gota") range.value = g.valor;
+
+    const topo = glicTopoCheio(g.valor);
+    cheia.setAttribute("y", topo.toFixed(2));
+    cheia.setAttribute("height", (GLIC_GOTA_BASE - topo).toFixed(2));
+
+    tela.className = "glic-tela zona-" + cls.zona;
+    gota.className = "glic-gota zona-" + cls.zona;
+    estado.textContent = cls.rotulo;
+    ref.textContent = glicEsperadoTexto(cls.lim);
+
+    st.glicose = { valor: g.valor, momento: g.momento };
+    st.subIndex = cls.indice;
+  };
+
+  range.addEventListener("input", () => {
+    g.valor = Number(range.value);
+    redesenha("gota");
+  });
+
+  num.addEventListener("input", () => {
+    const v = parseInt(num.value, 10);
+    if (Number.isNaN(v)) return;
+    g.valor = limita(v);
+    redesenha("campo");
+  });
+  num.addEventListener("blur", () => redesenha());
+
+  app.querySelectorAll("[data-momento]").forEach((b) => {
+    b.onclick = () => {
+      g.momento = b.dataset.momento;
+      app.querySelectorAll("[data-momento]").forEach((o) => {
+        const ativo = o === b;
+        o.classList.toggle("ativo", ativo);
+        o.setAttribute("aria-pressed", String(ativo));
+      });
+      redesenha();
+    };
+  });
+
+  redesenha(); // grava já a leitura inicial, como os outros aparelhos
+
+  app.querySelector('[data-modo="opcoes"]').onclick = () => {
+    st.glicose = null;
+    st.subIndex = item.sub.options.length - 1; // "Não consegui medir"
+    fechaPainel(item);
+  };
+}
+
 /* Rótulos de exibição para o estágio da pressão (dadospressao.js /
    sinergias.js usam as chaves internas, sem essa formatação). */
 const ROTULO_ESTAGIO_PA = {
@@ -2507,6 +2827,11 @@ function resumoMedicao(item) {
   if (!st) return "";
   if (item.painel === "febre" && st.medida != null) {
     return `${st.medida.toFixed(1)} °C · ${classificaTemperatura(st.medida).rotulo}`;
+  }
+  if (item.painel === "glicose" && st.glicose) {
+    const cls = classificaGlicose(st.glicose.valor, st.glicose.momento);
+    const v = st.glicose.valor >= GLIC_MAX ? `${GLIC_MAX}+` : st.glicose.valor;
+    return `${v} mg/dL · ${GLICOSE_MOMENTOS[st.glicose.momento].toLowerCase()} · ${cls.rotulo}`;
   }
   if (item.painel === "oximetro" && st.oxi) {
     return item.id === "spo2"
@@ -2743,6 +3068,8 @@ function apenasCuidadoEmCasa() {
 }
 
 function computeResultado() {
+  sincronizaGlicose();
+
   let hospital = false;
   let upa = false;
   let policia = false;

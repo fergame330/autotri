@@ -246,6 +246,20 @@ function descreveAtomo(src) {
   if ((m = src.match(/^c\.sym\("([^"]+)"\)$/)))
     return { kind: "sintoma", rotulo: "Sintoma", texto: rotuloSintoma(m[1]) };
 
+  if ((m = src.match(/^c\.sym\("([^"]+)",\s*(\[[\s\S]+\])\)$/))) {
+    const item = itemSintoma(m[1]);
+    const indices = (m[2].match(/\d+/g) || []).map(Number);
+    const rotulos = indices.map((i) => item && item.sub && item.sub.options[i] && item.sub.options[i].label);
+    if (rotulos.every(Boolean)) {
+      return {
+        kind: "sintoma",
+        rotulo: "Sintoma",
+        texto: rotuloSintoma(m[1]),
+        detalhe: "na resposta: " + rotulos.join(" · "),
+      };
+    }
+  }
+
   if ((m = src.match(/^c\.symGrave\("([^"]+)"\)$/))) {
     const op = opcoesGraves(m[1]);
     return {
@@ -292,13 +306,13 @@ function descreveAtomo(src) {
 
 function chipHtml(d, negado) {
   const rotulo = negado ? "Sem " + d.rotulo.toLowerCase() : d.rotulo;
-  return `<span class="chip chip-${d.kind}${negado ? " chip-nao" : ""}">
+  return `<span class="req-chip req-chip-${d.kind}${negado ? " req-chip-nao" : ""}">
       <b>${esc(rotulo)}</b>${esc(d.texto)}${d.detalhe ? `<i>${esc(d.detalhe)}</i>` : ""}
     </span>`;
 }
 
 function chipBruto(src) {
-  return `<span class="chip chip-bruto"><b>Condição</b><code>${esc(src)}</code></span>`;
+  return `<span class="req-chip req-chip-bruto"><b>Condição</b><code>${esc(src)}</code></span>`;
 }
 
 /* `aninhado` distingue a lista de requisitos do cartão (o "e" da raiz, sem
@@ -401,6 +415,7 @@ function tabelaSintomas(cat) {
       if (item.painel === "febre") marcas.push(selinho("termômetro", "medicao"));
       if (item.painel === "pressao") marcas.push(selinho("manômetro", "medicao"));
       if (item.painel === "oximetro") marcas.push(selinho("oxímetro", "medicao"));
+      if (item.painel === "glicose") marcas.push(selinho("glicosímetro", "medicao"));
 
       const cabeca = (n) =>
         `<th rowspan="${n}" scope="rowgroup"><span class="sintoma-nome">${esc(item.label)}</span>
@@ -525,6 +540,76 @@ function secaoOximetro() {
     ${tabelaFaixas("spo2", SPO2_MIN, SPO2_MAX, classificaSpo2, "%", "Saturação")}
     <h4>Frequência cardíaca (FC)</h4>
     ${tabelaFaixas("frequencia_cardiaca", FC_MIN, FC_MAX, classificaFc, " bpm", "Frequência")}
+  </div>`;
+}
+
+function secaoGlicose() {
+  const item = itemSintoma("glicose");
+
+  const limiteHtml = (lim) => {
+    const acima =
+      lim.alerta != null
+        ? `acima de ${lim.alvo}; bem acima a partir de ${lim.alerta}`
+        : `acima de ${lim.alvo}`;
+    return `<b>${GLIC_BAIXA} a ${lim.alvo} mg/dL</b><span class="obs">${esc(acima)}</span>`;
+  };
+
+  const momentos = Object.entries(GLICOSE_MOMENTOS);
+  const corpos = Object.values(GLICOSE_TABELA)
+    .map(
+      (f) => `<tbody>${momentos
+        .map(
+          ([chave, rotulo], i) => `
+          <tr>
+            ${i === 0 ? `<th rowspan="${momentos.length}" scope="rowgroup">${esc(f.rotulo)}</th>` : ""}
+            <td class="resp">${esc(rotulo)}</td>
+            <td>${limiteHtml(f[chave].sem)}</td>
+            <td>${limiteHtml(f[chave].com)}</td>
+          </tr>`
+        )
+        .join("")}</tbody>`
+    )
+    .join("");
+
+  /* Indexado pela posição da resposta no sintoma; ORDEM_GLICOSE só decide
+     em que sequência as linhas aparecem, do nível mais baixo ao mais alto. */
+  const QUANDO = [
+    "dentro do intervalo esperado na tabela acima",
+    `abaixo de ${GLIC_BAIXA} mg/dL, em qualquer faixa`,
+    "acima do esperado, sem chegar ao segundo corte",
+    "no segundo corte da tabela ou além dele",
+    "a pessoa marcou “não consegui medir”",
+  ];
+  const ORDEM_GLICOSE = [1, 0, 2, 3, 4];
+
+  const niveis = ORDEM_GLICOSE.map((i) => {
+    const opt = item.sub.options[i];
+    const extra = opt.casa ? `<span class="obs">sozinha: ${selo("casa")}</span>` : "";
+    return `<tr><td>${esc(opt.label)}</td><td class="resp">${esc(QUANDO[i])}</td>
+      <td class="cod"><code>${opt.code.join(",")}</code></td>
+      <td>${selo(destinoDeCodigo(opt.code))}${extra}</td></tr>`;
+  }).join("");
+
+  return `
+  <div class="cat">
+    <h3>Glicosímetro — glicemia</h3>
+    <p class="sub">Antes de abrir o aparelho a triagem pergunta idade, gênero e se a pessoa tem diabetes — os três mudam a tabela de referência, e a resposta de diabetes já fica marcada no histórico de saúde. O painel também pergunta se a medição foi em jejum ou 2 h depois de comer. Nenhum nível de glicose encaminha sozinho: todos valem <code>0</code>, e o que pesa é a combinação listada adiante.</p>
+
+    <h4>Faixas esperadas (mg/dL)</h4>
+    <div class="rolagem">
+      <table class="tbl">
+        <thead><tr><th>Faixa</th><th>Momento</th><th>Sem diabetes</th><th>Com diabetes</th></tr></thead>
+        ${corpos}
+      </table>
+    </div>
+
+    <h4>Classificação da leitura</h4>
+    <div class="rolagem">
+      <table class="tbl">
+        <thead><tr><th>Resposta</th><th>Quando</th><th>Código</th><th>Encaminhamento</th></tr></thead>
+        <tbody>${niveis}</tbody>
+      </table>
+    </div>
   </div>`;
 }
 
@@ -666,6 +751,7 @@ function secaoMedicoes() {
     <p class="sub">Alguns sintomas abrem uma medição no lugar das opções escritas. A leitura escolhe sozinha a resposta do sintoma.</p>
     ${secaoFebre()}
     ${secaoOximetro()}
+    ${secaoGlicose()}
     ${secaoPressao()}
   </section>`;
 }

@@ -47,6 +47,7 @@
 
   --fig-menino: #2563eb;
   --fig-menina: #db2777;
+  --sangue: #c4173f;
 
   --track: #dbe4ec;
   --shadow-sm: 0 1px 2px rgba(15, 35, 55, .06), 0 1px 3px rgba(15, 35, 55, .05);
@@ -104,6 +105,7 @@
 
   --fig-menino: #60a5fa;
   --fig-menina: #f472b6;
+  --sangue: #f2577a;
 
   --track: #2b3a49;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
@@ -1069,6 +1071,177 @@ input[type="range"]:focus-visible { box-shadow: 0 0 0 3.5px var(--ring); }
   font-weight: 700;
   color: var(--zona, var(--muted));
   font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------- Glicosímetro ------------------------------ */
+
+.glic { margin: 2px 0 6px; --glic-h: 200px; }
+
+/* Jejum ou depois de comer: muda a faixa esperada. */
+.glic-momento { display: flex; gap: 8px; margin-bottom: 15px; }
+.glic-momento button {
+  flex: 1;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 9px 6px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.glic-momento button:hover { border-color: var(--brand); }
+.glic-momento button.ativo {
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-color: var(--brand);
+}
+
+.glic-corpo {
+  max-width: 268px;
+  margin: 0 auto;
+  padding: 14px 14px 0;
+  border-radius: 20px 20px 10px 10px;
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+.glic-tela {
+  border-radius: 10px;
+  padding: 9px 12px 7px;
+  text-align: center;
+  background: radial-gradient(130% 120% at 50% 0%, #16242e, #0a1117 70%);
+  box-shadow: inset 0 1px 7px rgba(0, 0, 0, .65);
+}
+.glic-tela.zona-normal { --glic-cor: #37d67a; }
+.glic-tela.zona-leve   { --glic-cor: #ffc247; }
+.glic-tela.zona-grave  { --glic-cor: #ff7a7a; }
+
+.glic-leitura { display: flex; align-items: baseline; justify-content: center; gap: 6px; }
+
+/* O número é o próprio campo: clicar nele já digita. */
+.glic-num {
+  width: 4.2ch;
+  font: inherit;
+  font-size: 2.3rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--glic-cor, #37d67a);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--glic-cor, #37d67a) 45%, transparent);
+  background: none;
+  border: 0;
+  border-bottom: 1.5px dashed rgba(138, 160, 176, .45);
+  border-radius: 0;
+  padding: 0 0 1px;
+  cursor: text;
+  -moz-appearance: textfield;
+  appearance: textfield;
+  transition: color .45s ease, text-shadow .45s ease, border-bottom-color .45s ease;
+}
+.glic-num::-webkit-outer-spin-button,
+.glic-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.glic-num:focus { outline: none; border-bottom-style: solid; border-bottom-color: var(--glic-cor, #37d67a); }
+
+.glic-un {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: #8aa0b0;
+}
+.glic-estado {
+  margin-top: 1px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--glic-cor, #37d67a);
+  transition: color .45s ease;
+}
+
+/* Gota de sangue: é ela o controle deslizante. */
+.glic-medidor {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  height: var(--glic-h);
+  margin: 16px 0 2px;
+}
+
+.glic-marcas {
+  position: relative;
+  width: 42px;
+  height: calc(var(--glic-h) * 142 / 154);
+}
+.glic-marca {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.glic-marca::after { content: ""; width: 7px; height: 1.5px; background: var(--border-strong); }
+
+.glic-gota { position: relative; height: 100%; aspect-ratio: 110 / 154; }
+.glic-gota svg { width: 100%; height: 100%; display: block; }
+
+.glic-gota-fundo { fill: var(--track); }
+.glic-gota-cheia { fill: var(--sangue); transition: fill .3s ease; }
+.glic-gota-borda { fill: none; stroke: var(--border-strong); stroke-width: 2.5; transition: stroke .15s; }
+.glic-gota-brilho { fill: #fff; opacity: .2; pointer-events: none; }
+
+/* Range real por cima do desenho: mantém teclado e toque nativos.
+   A largura é a altura útil da gota (142 de 154 unidades do viewBox), que
+   é centrada no desenho — assim o dedo e o nível batem exatamente. */
+.glic-range {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--glic-h) * 142 / 154);
+  height: 46px;
+  margin: 0;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  opacity: 0;
+  cursor: ns-resize;
+  background: none;
+}
+.glic-gota:focus-within .glic-gota-borda { stroke: var(--brand); stroke-width: 4; }
+
+/* Fenda da tira reagente. */
+.glic-tira {
+  height: 24px;
+  margin: 12px -14px 0;
+  border-radius: 0 0 9px 9px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
+  border-top: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+}
+.glic-tira span {
+  width: 64px;
+  height: 11px;
+  border-radius: var(--r-full);
+  background: var(--bg);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, .25);
+}
+
+.glic-ref {
+  margin: 14px 0 16px;
+  text-align: center;
+  font-size: 0.77rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 /* --------------------- Altura (personagem + régua) ------------------------ */
